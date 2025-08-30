@@ -127,6 +127,7 @@ public class FocusHistory
 {
     private readonly Dictionary<(int desktop, IntPtr monitor), CircularLinkedList> _contextLists = new();
     private readonly object _lock = new();
+    private int _lastFocusedDesktop = -1;
 
     public void AddOrMoveToFront(IntPtr hWnd)
     {
@@ -140,9 +141,14 @@ public class FocusHistory
         lock (_lock)
         {
             var desktop = VirtualDesktopInterop.GetWindowDesktopNumber(hWnd);
+            if (desktop == -1)
+            {
+                return;
+            }
             var monitor = WindowHelper.GetWindowMonitor(hWnd);
             var key = (desktop, monitor);
 
+            // Update last focused desktop if different
             if (!_contextLists.TryGetValue(key, out var list))
             {
                 list = new CircularLinkedList();
@@ -150,6 +156,18 @@ public class FocusHistory
             }
 
             list.AddOrMoveToFront(hWnd);
+            
+            // Log the window context and linked list info
+            var windowTitle = WindowHelper.GetWindowTitle(hWnd);
+            System.Diagnostics.Debug.WriteLine($"AddOrMoveToFront: [{windowTitle}] -> Desktop:{desktop}, Monitor:{monitor}");
+            
+            if (list.Head != null)
+            {
+                var prevTitle = list.Head.Previous != null ? WindowHelper.GetWindowTitle(list.Head.Previous.WindowHandle) : "null";
+                var nextTitle = list.Head.Next != null ? WindowHelper.GetWindowTitle(list.Head.Next.WindowHandle) : "null";
+                System.Diagnostics.Debug.WriteLine($"  Linked List: Prev=[{prevTitle}] <- Current=[{windowTitle}] -> Next=[{nextTitle}]");
+            }
+            
             CleanupInvalidWindows();
         }
     }
@@ -200,28 +218,105 @@ public class FocusHistory
         }
     }
 
-    public IntPtr? GetLastFocusedOnDifferentDesktop()
+    public int GetLastFocusedDesktop()
     {
         lock (_lock)
         {
-            var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
+            return _lastFocusedDesktop;
+        }
+    }
+    public void SetLastFocusedDesktop(int desktop)
+    {
+        lock (_lock)
+        {
+            _lastFocusedDesktop = desktop;
+        }
+    }
 
-            // Look for windows on different desktop
+    public IntPtr? GetLastFocusedWindowOnDesktop(int desktop)
+    {
+        lock (_lock)
+        {
+            IntPtr? bestWindow = null;
+            
+            // Look through all contexts on the specified desktop
             foreach (var kvp in _contextLists)
             {
-                var (desktop, monitor) = kvp.Key;
-                if (desktop != currentDesktop)
+                var (contextDesktop, monitor) = kvp.Key;
+                if (contextDesktop == desktop)
                 {
                     var list = kvp.Value;
                     if (list.Head != null && WindowHelper.IsWindowVisible(list.Head.WindowHandle))
                     {
-                        return list.Head.WindowHandle;
+                        bestWindow = list.Head.WindowHandle;
+                        break; // Return the first valid window found (most recently focused in that context)
                     }
                 }
             }
 
-            return null;
+            return bestWindow;
         }
+    }
+
+    public void HandleWindowLocationChange(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || !WindowHelper.IsWindowVisible(hWnd))
+            return;
+
+        lock (_lock)
+        {
+            var newDesktop = VirtualDesktopInterop.GetWindowDesktopNumber(hWnd);
+            var newMonitor = WindowHelper.GetWindowMonitor(hWnd);
+            var newKey = (newDesktop, newMonitor);
+
+            // Find and remove the window from its old context
+            var oldKey = FindWindowContext(hWnd);
+            if (oldKey.HasValue && oldKey.Value != newKey)
+            {
+                if (_contextLists.TryGetValue(oldKey.Value, out var oldList))
+                {
+                    oldList.RemoveWindow(hWnd);
+                    
+                    // Remove empty list
+                    if (oldList.IsEmpty)
+                    {
+                        _contextLists.Remove(oldKey.Value);
+                    }
+                }
+
+                // Add to new context (only if monitor actually changed)
+                if (oldKey.Value.monitor != newMonitor && newMonitor != IntPtr.Zero)
+                {
+                    if (!_contextLists.TryGetValue(newKey, out var newList))
+                    {
+                        newList = new CircularLinkedList();
+                        _contextLists[newKey] = newList;
+                    }
+                    newList.AddOrMoveToFront(hWnd);
+                }
+            }
+        }
+    }
+
+    private (int desktop, IntPtr monitor)? FindWindowContext(IntPtr hWnd)
+    {
+        foreach (var kvp in _contextLists)
+        {
+            var list = kvp.Value;
+            var current = list.Head;
+            if (current != null)
+            {
+                do
+                {
+                    if (current.WindowHandle == hWnd)
+                    {
+                        return kvp.Key;
+                    }
+                    current = current.Next;
+                } while (current != null && current != list.Head);
+            }
+        }
+        return null;
     }
 
     private void CleanupInvalidWindows()

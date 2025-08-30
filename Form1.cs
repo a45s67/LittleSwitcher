@@ -65,13 +65,16 @@ public partial class Form1 : Form
             }
         });
 
-        // Alt+\: Last focused window in last virtual desktop
+        // Alt+\: Go to last focused desktop then focus the last focused window on that desktop
         _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_5, () =>
         {
-            var window = _focusHistory.GetLastFocusedOnDifferentDesktop();
+            var lastDesktop = _focusHistory.GetLastFocusedDesktop();
+            _focusHistory.SetLastFocusedDesktop(VirtualDesktopInterop.GetCurrentDesktopNumber());
+            VirtualDesktopInterop.GoToDesktopNumber(lastDesktop);
+
+            var window = _focusHistory.GetLastFocusedWindowOnDesktop(lastDesktop);
             if (window.HasValue && window.Value != IntPtr.Zero)
             {
-                VirtualDesktopInterop.GoToDesktopNumber(VirtualDesktopInterop.GetWindowDesktopNumber(window.Value));
                 WindowHelper.FocusWindow(window.Value);
             }
         });
@@ -82,9 +85,11 @@ public partial class Form1 : Form
             var desktopNumber = (int)(i - 1); // Desktop numbers are 0-based
             var virtualKey = GlobalHotkey.VK_1 + (i - 1);
             var capturedDesktopNumber = desktopNumber; // Capture the variable for the closure
-            
+
             _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, virtualKey, () =>
             {
+                var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
+                _focusHistory.SetLastFocusedDesktop(currentDesktop);
                 VirtualDesktopInterop.GoToDesktopNumber(capturedDesktopNumber);
             });
         }
@@ -128,9 +133,8 @@ public partial class Form1 : Form
     {
         if (eventType == EVENT_OBJECT_LOCATIONCHANGE && hwnd != IntPtr.Zero && hwnd != this.Handle)
         {
-            // Handle window location change
-            // You can add your custom logic here
-            System.Diagnostics.Debug.WriteLine($"Window location changed: {hwnd}");
+            // Handle window location change - update context lists if window moved to different monitor
+            _focusHistory.HandleWindowLocationChange(hwnd);
         }
     }
 
