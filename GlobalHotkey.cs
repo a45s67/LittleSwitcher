@@ -32,6 +32,7 @@ public class GlobalHotkey
     public const uint VK_9 = 0x39;
     public const uint VK_OEM_4 = 0xDB; // [ key
     public const uint VK_OEM_5 = 0xDC; // \ key
+    public const uint VK_OEM_6 = 0xDD; // ] key
 
     private readonly IntPtr _windowHandle;
     private readonly Dictionary<int, Action> _hotkeyActions = new();

@@ -56,7 +56,7 @@ public partial class Form1 : Form
         });
 
         // Alt+]: Last focused window on another screen
-        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_4, () =>
+        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_6, () =>
         {
             var window = _focusHistory.GetLastFocusedOnDifferentMonitor();
             if (window.HasValue && window.Value != IntPtr.Zero)
