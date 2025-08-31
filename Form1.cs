@@ -21,9 +21,7 @@ public partial class Form1 : Form
     private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
 
-    private IntPtr _foregroundHook;
     private IntPtr _locationHook;
-    private WinEventDelegate? _foregroundDelegate;
     private WinEventDelegate? _locationDelegate;
 
     public Form1()
@@ -39,8 +37,8 @@ public partial class Form1 : Form
         _globalHotkey = new GlobalHotkey(this.Handle);
 
         SetupHotkeys();
-        SetupFocusTracking();
         SetupLocationTracking();
+        SetupTrayIcon();
     }
 
     private void SetupHotkeys()
@@ -79,6 +77,16 @@ public partial class Form1 : Form
             }
         });
 
+        // Alt+A: Toggle current window in management system
+        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_A, () =>
+        {
+            var currentWindow = WindowHelper.GetForegroundWindow();
+            if (currentWindow != IntPtr.Zero && currentWindow != this.Handle)
+            {
+                _focusHistory.ToggleWindowManagement(currentWindow);
+            }
+        });
+
         // Alt+1 through Alt+9: Switch to virtual desktops
         for (uint i = 1; i <= 9; i++)
         {
@@ -95,20 +103,6 @@ public partial class Form1 : Form
         }
     }
 
-    private void SetupFocusTracking()
-    {
-        // Set up Windows event hook to track foreground window changes
-        _foregroundDelegate = new WinEventDelegate(ForegroundChangedHandler);
-        _foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
-            IntPtr.Zero, _foregroundDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
-
-        // Also track current window immediately
-        var currentWindow = WindowHelper.GetForegroundWindow();
-        if (currentWindow != IntPtr.Zero)
-        {
-            _focusHistory.AddOrMoveToFront(currentWindow);
-        }
-    }
 
     private void SetupLocationTracking()
     {
@@ -118,15 +112,6 @@ public partial class Form1 : Form
             IntPtr.Zero, _locationDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
     }
 
-    private void ForegroundChangedHandler(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, 
-        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
-    {
-        if (eventType == EVENT_SYSTEM_FOREGROUND && hwnd != IntPtr.Zero && hwnd != this.Handle)
-        {
-            // Add the newly focused window to our focus history
-            _focusHistory.AddOrMoveToFront(hwnd);
-        }
-    }
 
     private void LocationChangedHandler(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, 
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
@@ -158,5 +143,26 @@ public partial class Form1 : Form
         base.SetVisibleCore(false);
     }
 
+    private void SetupTrayIcon()
+    {
+        // Use default system application icon for now
+        notifyIcon.Icon = SystemIcons.Application;
+        notifyIcon.Text = "LittleSwitcher - Desktop Switcher";
+    }
 
+    private void exitToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        // Hide tray icon first
+        notifyIcon.Visible = false;
+        
+        // Exit the application
+        Application.Exit();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        // Ensure proper cleanup when form is closing
+        notifyIcon.Visible = false;
+        base.OnFormClosing(e);
+    }
 }

@@ -319,6 +319,60 @@ public class FocusHistory
         return null;
     }
 
+    public void ToggleWindowManagement(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || !WindowHelper.IsWindowVisible(hWnd))
+            return;
+
+        var title = WindowHelper.GetWindowTitle(hWnd);
+        if (string.IsNullOrEmpty(title) || title.Length < 2)
+            return;
+
+        lock (_lock)
+        {
+            var desktop = VirtualDesktopInterop.GetWindowDesktopNumber(hWnd);
+            if (desktop == -1)
+            {
+                return;
+            }
+            var monitor = WindowHelper.GetWindowMonitor(hWnd);
+            var key = (desktop, monitor);
+
+            // Check if window is already being managed
+            var existingContext = FindWindowContext(hWnd);
+            
+            if (existingContext.HasValue)
+            {
+                // Remove from management
+                if (_contextLists.TryGetValue(existingContext.Value, out var existingList))
+                {
+                    existingList.RemoveWindow(hWnd);
+                    System.Diagnostics.Debug.WriteLine($"Removed from management: [{title}]");
+                    
+                    // Remove empty list
+                    if (existingList.IsEmpty)
+                    {
+                        _contextLists.Remove(existingContext.Value);
+                    }
+                }
+            }
+            else
+            {
+                // Add to management
+                if (!_contextLists.TryGetValue(key, out var list))
+                {
+                    list = new CircularLinkedList();
+                    _contextLists[key] = list;
+                }
+
+                list.AddOrMoveToFront(hWnd);
+                System.Diagnostics.Debug.WriteLine($"Added to management: [{title}] -> Desktop:{desktop}, Monitor:{monitor}");
+            }
+            
+            CleanupInvalidWindows();
+        }
+    }
+
     private void CleanupInvalidWindows()
     {
         var keysToRemove = new List<(int, IntPtr)>();

@@ -17,14 +17,16 @@ partial class Form1
         {
             _globalHotkey?.UnregisterAll();
             
-            if (_foregroundHook != IntPtr.Zero)
-            {
-                UnhookWinEvent(_foregroundHook);
-            }
-            
             if (_locationHook != IntPtr.Zero)
             {
                 UnhookWinEvent(_locationHook);
+            }
+            
+            // Hide and dispose of tray icon
+            if (notifyIcon != null)
+            {
+                notifyIcon.Visible = false;
+                notifyIcon.Dispose();
             }
             
             if (components != null)
@@ -44,10 +46,45 @@ partial class Form1
     private void InitializeComponent()
     {
         this.components = new System.ComponentModel.Container();
+        this.notifyIcon = new System.Windows.Forms.NotifyIcon(this.components);
+        this.contextMenuStrip = new System.Windows.Forms.ContextMenuStrip(this.components);
+        this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+        this.contextMenuStrip.SuspendLayout();
+        this.SuspendLayout();
+        // 
+        // notifyIcon
+        // 
+        this.notifyIcon.ContextMenuStrip = this.contextMenuStrip;
+        this.notifyIcon.Text = "LittleSwitcher";
+        this.notifyIcon.Visible = true;
+        // 
+        // contextMenuStrip
+        // 
+        this.contextMenuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+        this.exitToolStripMenuItem});
+        this.contextMenuStrip.Name = "contextMenuStrip";
+        this.contextMenuStrip.Size = new System.Drawing.Size(93, 26);
+        // 
+        // exitToolStripMenuItem
+        // 
+        this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
+        this.exitToolStripMenuItem.Size = new System.Drawing.Size(92, 22);
+        this.exitToolStripMenuItem.Text = "Exit";
+        this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
+        // 
+        // Form1
+        // 
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
         this.ClientSize = new System.Drawing.Size(800, 450);
-        this.Text = "Form1";
+        this.Name = "Form1";
+        this.Text = "LittleSwitcher";
+        this.contextMenuStrip.ResumeLayout(false);
+        this.ResumeLayout(false);
     }
+
+    private System.Windows.Forms.NotifyIcon notifyIcon;
+    private System.Windows.Forms.ContextMenuStrip contextMenuStrip;
+    private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
 
     #endregion
 }
