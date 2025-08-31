@@ -29,6 +29,12 @@ partial class Form1
                 notifyIcon.Dispose();
             }
             
+            // Dispose status window
+            if (_statusWindow != null)
+            {
+                _statusWindow.Dispose();
+            }
+            
             if (components != null)
             {
                 components.Dispose();
@@ -48,6 +54,7 @@ partial class Form1
         this.components = new System.ComponentModel.Container();
         this.notifyIcon = new System.Windows.Forms.NotifyIcon(this.components);
         this.contextMenuStrip = new System.Windows.Forms.ContextMenuStrip(this.components);
+        this.showStatusToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
         this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
         this.contextMenuStrip.SuspendLayout();
         this.SuspendLayout();
@@ -61,14 +68,22 @@ partial class Form1
         // contextMenuStrip
         // 
         this.contextMenuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+        this.showStatusToolStripMenuItem,
         this.exitToolStripMenuItem});
         this.contextMenuStrip.Name = "contextMenuStrip";
-        this.contextMenuStrip.Size = new System.Drawing.Size(93, 26);
+        this.contextMenuStrip.Size = new System.Drawing.Size(140, 48);
+        // 
+        // showStatusToolStripMenuItem
+        // 
+        this.showStatusToolStripMenuItem.Name = "showStatusToolStripMenuItem";
+        this.showStatusToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
+        this.showStatusToolStripMenuItem.Text = "Toggle Status";
+        this.showStatusToolStripMenuItem.Click += new System.EventHandler(this.showStatusToolStripMenuItem_Click);
         // 
         // exitToolStripMenuItem
         // 
         this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-        this.exitToolStripMenuItem.Size = new System.Drawing.Size(92, 22);
+        this.exitToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
         this.exitToolStripMenuItem.Text = "Exit";
         this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
         // 
@@ -84,6 +99,7 @@ partial class Form1
 
     private System.Windows.Forms.NotifyIcon notifyIcon;
     private System.Windows.Forms.ContextMenuStrip contextMenuStrip;
+    private System.Windows.Forms.ToolStripMenuItem showStatusToolStripMenuItem;
     private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
 
     #endregion

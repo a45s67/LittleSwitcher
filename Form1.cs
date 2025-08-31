@@ -6,6 +6,7 @@ public partial class Form1 : Form
 {
     private FocusHistory _focusHistory;
     private GlobalHotkey _globalHotkey;
+    private StatusWindow _statusWindow;
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
@@ -35,6 +36,7 @@ public partial class Form1 : Form
 
         _focusHistory = new FocusHistory();
         _globalHotkey = new GlobalHotkey(this.Handle);
+        _statusWindow = new StatusWindow(_focusHistory);
 
         SetupHotkeys();
         SetupLocationTracking();
@@ -69,12 +71,6 @@ public partial class Form1 : Form
             var lastDesktop = _focusHistory.GetLastFocusedDesktop();
             _focusHistory.SetLastFocusedDesktop(VirtualDesktopInterop.GetCurrentDesktopNumber());
             VirtualDesktopInterop.GoToDesktopNumber(lastDesktop);
-
-            var window = _focusHistory.GetLastFocusedWindowOnDesktop(lastDesktop);
-            if (window.HasValue && window.Value != IntPtr.Zero)
-            {
-                WindowHelper.FocusWindow(window.Value);
-            }
         });
 
         // Alt+A: Toggle current window in management system
@@ -159,9 +155,23 @@ public partial class Form1 : Form
         Application.Exit();
     }
 
+    private void showStatusToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        if (_statusWindow.Visible)
+        {
+            _statusWindow.Hide();
+        }
+        else
+        {
+            _statusWindow.Show();
+            _statusWindow.BringToFront();
+        }
+    }
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         // Ensure proper cleanup when form is closing
+        _statusWindow?.Close();
         notifyIcon.Visible = false;
         base.OnFormClosing(e);
     }

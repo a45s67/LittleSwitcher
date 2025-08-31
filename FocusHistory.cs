@@ -54,12 +54,6 @@ public class CircularLinkedList
 
         // Move to next window in cycle
         Current = Current.Next;
-        
-        // Skip the current focused window (head) if there are other windows
-        if (Current == Head && Head.Next != Head)
-        {
-            Current = Current.Next;
-        }
 
         return Current?.WindowHandle;
     }
@@ -246,9 +240,9 @@ public class FocusHistory
                 if (contextDesktop == desktop)
                 {
                     var list = kvp.Value;
-                    if (list.Head != null && WindowHelper.IsWindowVisible(list.Head.WindowHandle))
+                    if (list.Current != null && WindowHelper.IsWindowVisible(list.Head.WindowHandle))
                     {
-                        bestWindow = list.Head.WindowHandle;
+                        bestWindow = list.Current.WindowHandle;
                         break; // Return the first valid window found (most recently focused in that context)
                     }
                 }
@@ -370,6 +364,63 @@ public class FocusHistory
             }
             
             CleanupInvalidWindows();
+        }
+    }
+
+    public string GetStatusReport()
+    {
+        lock (_lock)
+        {
+            CleanupInvalidWindows();
+            
+            if (_contextLists.Count == 0)
+            {
+                return "No windows are currently managed.\r\nUse Alt+A to add windows to management.";
+            }
+
+            var report = new System.Text.StringBuilder();
+            report.AppendLine("Window Management Status:");
+            report.AppendLine();
+
+            foreach (var kvp in _contextLists.OrderBy(x => x.Key.desktop).ThenBy(x => x.Key.monitor.ToInt64()))
+            {
+                var (desktop, monitor) = kvp.Key;
+                var list = kvp.Value;
+                
+                report.AppendLine($"Desktop {desktop}, Monitor {monitor.ToInt64()}:");
+                
+                if (list.Head == null)
+                {
+                    report.AppendLine("  (empty)");
+                }
+                else
+                {
+                    var windowTitles = new List<string>();
+                    var current = list.Head;
+                    
+                    do
+                    {
+                        var title = WindowHelper.GetWindowTitle(current.WindowHandle);
+                        if (string.IsNullOrEmpty(title))
+                            title = $"Window({current.WindowHandle.ToInt64()})";
+                        if (current == list.Current)
+                        {
+                            windowTitles.Add($"(current)[{title}]");
+                        }
+                        else
+                        {
+                            windowTitles.Add($"[{title}]");
+                        }
+                        current = current.Next;
+                    } while (current != null && current != list.Head);
+                    
+                    report.AppendLine($"{string.Join("\r\n -> ", windowTitles)}\r\n -> {windowTitles[0]}");
+                }
+                
+                report.AppendLine();
+            }
+            
+            return report.ToString();
         }
     }
 
