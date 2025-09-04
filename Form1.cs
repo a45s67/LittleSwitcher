@@ -71,6 +71,12 @@ public partial class Form1 : Form
             var lastDesktop = _focusHistory.GetLastFocusedDesktop();
             _focusHistory.SetLastFocusedDesktop(VirtualDesktopInterop.GetCurrentDesktopNumber());
             VirtualDesktopInterop.GoToDesktopNumber(lastDesktop);
+            var window = _focusHistory.GetLastFocusedWindowOnDesktop(lastDesktop);
+            if (window.HasValue && window.Value != IntPtr.Zero)
+            {
+                WindowHelper.FocusWindow(window.Value);
+            }
+
         });
 
         // Alt+A: Toggle current window in management system
@@ -95,6 +101,11 @@ public partial class Form1 : Form
                 var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
                 _focusHistory.SetLastFocusedDesktop(currentDesktop);
                 VirtualDesktopInterop.GoToDesktopNumber(capturedDesktopNumber);
+                var window = _focusHistory.GetLastFocusedWindowOnDesktop(capturedDesktopNumber);
+                if (window.HasValue && window.Value != IntPtr.Zero)
+                {
+                    WindowHelper.FocusWindow(window.Value);
+                }
             });
         }
     }
