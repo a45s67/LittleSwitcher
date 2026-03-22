@@ -1,6 +1,6 @@
 ﻿namespace LittleSwitcher;
 
-partial class Form1
+partial class AppHost
 {
     /// <summary>
     ///  Required designer variable.
@@ -96,11 +96,11 @@ partial class Form1
         this.exitToolStripMenuItem.Text = "Exit";
         this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
         // 
-        // Form1
+        // AppHost
         // 
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
         this.ClientSize = new System.Drawing.Size(800, 450);
-        this.Name = "Form1";
+        this.Name = "AppHost";
         this.Text = "LittleSwitcher";
         this.contextMenuStrip.ResumeLayout(false);
         this.ResumeLayout(false);

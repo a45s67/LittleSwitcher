@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace LittleSwitcher;
 
-public partial class Form1 : Form
+public partial class AppHost : Form
 {
     private FocusHistory _focusHistory;
     private GlobalHotkey _globalHotkey;
@@ -26,7 +26,7 @@ public partial class Form1 : Form
     private IntPtr _locationHook;
     private WinEventDelegate? _locationDelegate;
 
-    public Form1()
+    public AppHost()
     {
         InitializeComponent();
         
@@ -43,6 +43,9 @@ public partial class Form1 : Form
         SetupHotkeys();
         SetupLocationTracking();
         SetupTrayIcon();
+
+        // Show settings on launch so user sees the app is running
+        BeginInvoke(() => settingsToolStripMenuItem_Click(this, EventArgs.Empty));
     }
 
     private void SetupHotkeys()
@@ -166,7 +169,15 @@ public partial class Form1 : Form
         {
             _hotkeyConfig = config;
         });
-        form.ShowDialog();
+        var result = form.ShowDialog();
+
+        if (result == DialogResult.Abort)
+        {
+            // User clicked "Exit App"
+            notifyIcon.Visible = false;
+            Application.Exit();
+            return;
+        }
 
         // Re-register hotkeys after settings form closes
         SetupHotkeys();

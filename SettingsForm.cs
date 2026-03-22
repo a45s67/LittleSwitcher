@@ -132,22 +132,30 @@ public class SettingsForm : Form
         y += rowH;
 
         // Buttons
-        var btnCancel = new Button
+        var btnExit = new Button
         {
-            Text = "Cancel",
+            Text = "Exit App",
             Size = new Size(80, 28),
-            Location = new Point(ClientSize.Width - 96, y),
-            DialogResult = DialogResult.Cancel
+            Location = new Point(ClientSize.Width - 96, y)
+        };
+        btnExit.Click += (_, _) =>
+        {
+            DialogResult = DialogResult.Abort;
+            Close();
         };
 
-        var btnSave = new Button
+        var btnMinimize = new Button
         {
-            Text = "Save",
-            Size = new Size(80, 28),
-            Location = new Point(btnCancel.Left - 88, y),
-            DialogResult = DialogResult.OK
+            Text = "Save && Minimize",
+            Size = new Size(120, 28),
+            Location = new Point(btnExit.Left - 128, y)
         };
-        btnSave.Click += (_, _) => SaveConfig();
+        btnMinimize.Click += (_, _) =>
+        {
+            SaveConfig();
+            DialogResult = DialogResult.OK;
+            Close();
+        };
 
         var btnReset = new Button
         {
@@ -157,12 +165,11 @@ public class SettingsForm : Form
         };
         btnReset.Click += (_, _) => ResetToDefaults();
 
-        Controls.Add(btnCancel);
-        Controls.Add(btnSave);
+        Controls.Add(btnExit);
+        Controls.Add(btnMinimize);
         Controls.Add(btnReset);
 
-        AcceptButton = btnSave;
-        CancelButton = btnCancel;
+        AcceptButton = btnMinimize;
     }
 
     private HotkeyTextBox AddRow(string label, HotkeyBinding binding, int labelX, int inputX, int inputW, ref int y, int rowH)
