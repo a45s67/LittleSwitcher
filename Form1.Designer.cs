@@ -55,20 +55,22 @@ partial class Form1
         this.notifyIcon = new System.Windows.Forms.NotifyIcon(this.components);
         this.contextMenuStrip = new System.Windows.Forms.ContextMenuStrip(this.components);
         this.showStatusToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+        this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
         this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
         this.contextMenuStrip.SuspendLayout();
         this.SuspendLayout();
-        // 
+        //
         // notifyIcon
-        // 
+        //
         this.notifyIcon.ContextMenuStrip = this.contextMenuStrip;
         this.notifyIcon.Text = "LittleSwitcher";
         this.notifyIcon.Visible = true;
-        // 
+        //
         // contextMenuStrip
-        // 
+        //
         this.contextMenuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
         this.showStatusToolStripMenuItem,
+        this.settingsToolStripMenuItem,
         this.exitToolStripMenuItem});
         this.contextMenuStrip.Name = "contextMenuStrip";
         this.contextMenuStrip.Size = new System.Drawing.Size(140, 48);
@@ -79,7 +81,14 @@ partial class Form1
         this.showStatusToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
         this.showStatusToolStripMenuItem.Text = "Toggle Status";
         this.showStatusToolStripMenuItem.Click += new System.EventHandler(this.showStatusToolStripMenuItem_Click);
-        // 
+        //
+        // settingsToolStripMenuItem
+        //
+        this.settingsToolStripMenuItem.Name = "settingsToolStripMenuItem";
+        this.settingsToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
+        this.settingsToolStripMenuItem.Text = "Settings";
+        this.settingsToolStripMenuItem.Click += new System.EventHandler(this.settingsToolStripMenuItem_Click);
+        //
         // exitToolStripMenuItem
         // 
         this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
@@ -100,6 +109,7 @@ partial class Form1
     private System.Windows.Forms.NotifyIcon notifyIcon;
     private System.Windows.Forms.ContextMenuStrip contextMenuStrip;
     private System.Windows.Forms.ToolStripMenuItem showStatusToolStripMenuItem;
+    private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;
     private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
 
     #endregion

@@ -7,6 +7,7 @@ public partial class Form1 : Form
     private FocusHistory _focusHistory;
     private GlobalHotkey _globalHotkey;
     private StatusWindow _statusWindow;
+    private HotkeyConfig _hotkeyConfig;
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
@@ -37,6 +38,7 @@ public partial class Form1 : Form
         _focusHistory = new FocusHistory();
         _globalHotkey = new GlobalHotkey(this.Handle);
         _statusWindow = new StatusWindow(_focusHistory);
+        _hotkeyConfig = HotkeyConfig.Load();
 
         SetupHotkeys();
         SetupLocationTracking();
@@ -45,8 +47,11 @@ public partial class Form1 : Form
 
     private void SetupHotkeys()
     {
-        // Alt+W: Cycle through focus history in current context
-        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_W, () =>
+        _globalHotkey.UnregisterAll();
+
+        var cfg = _hotkeyConfig;
+
+        _globalHotkey.RegisterHotkey(cfg.CycleWindows.Modifiers, cfg.CycleWindows.Key, () =>
         {
             var nextWindow = _focusHistory.GetNextInCurrentContext();
             if (nextWindow.HasValue && nextWindow.Value != IntPtr.Zero)
@@ -55,8 +60,7 @@ public partial class Form1 : Form
             }
         });
 
-        // Alt+]: Last focused window on another screen
-        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_6, () =>
+        _globalHotkey.RegisterHotkey(cfg.FocusOtherMonitor.Modifiers, cfg.FocusOtherMonitor.Key, () =>
         {
             var window = _focusHistory.GetLastFocusedOnDifferentMonitor();
             if (window.HasValue && window.Value != IntPtr.Zero)
@@ -65,8 +69,7 @@ public partial class Form1 : Form
             }
         });
 
-        // Alt+\: Go to last focused desktop then focus the last focused window on that desktop
-        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_5, () =>
+        _globalHotkey.RegisterHotkey(cfg.LastDesktop.Modifiers, cfg.LastDesktop.Key, () =>
         {
             var lastDesktop = _focusHistory.GetLastFocusedDesktop();
             _focusHistory.SetLastFocusedDesktop(VirtualDesktopInterop.GetCurrentDesktopNumber());
@@ -76,11 +79,9 @@ public partial class Form1 : Form
             {
                 WindowHelper.FocusWindow(window.Value);
             }
-
         });
 
-        // Alt+A: Toggle current window in management system
-        _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_A, () =>
+        _globalHotkey.RegisterHotkey(cfg.ToggleManagement.Modifiers, cfg.ToggleManagement.Key, () =>
         {
             var currentWindow = WindowHelper.GetForegroundWindow();
             if (currentWindow != IntPtr.Zero && currentWindow != this.Handle)
@@ -89,14 +90,13 @@ public partial class Form1 : Form
             }
         });
 
-        // Alt+1 through Alt+9: Switch to virtual desktops
+        // 1-9: Switch to virtual desktops
         for (uint i = 1; i <= 9; i++)
         {
-            var desktopNumber = (int)(i - 1); // Desktop numbers are 0-based
+            var capturedDesktopNumber = (int)(i - 1);
             var virtualKey = GlobalHotkey.VK_1 + (i - 1);
-            var capturedDesktopNumber = desktopNumber; // Capture the variable for the closure
 
-            _globalHotkey.RegisterHotkey(GlobalHotkey.MOD_ALT, virtualKey, () =>
+            _globalHotkey.RegisterHotkey(cfg.SwitchDesktopModifier, virtualKey, () =>
             {
                 var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
                 _focusHistory.SetLastFocusedDesktop(currentDesktop);
@@ -155,6 +155,21 @@ public partial class Form1 : Form
         // Use default system application icon for now
         notifyIcon.Icon = SystemIcons.Application;
         notifyIcon.Text = "LittleSwitcher - Desktop Switcher";
+    }
+
+    private void settingsToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        // Unregister hotkeys so they don't intercept keypresses in the settings form
+        _globalHotkey.UnregisterAll();
+
+        var form = new SettingsForm(_hotkeyConfig, config =>
+        {
+            _hotkeyConfig = config;
+        });
+        form.ShowDialog();
+
+        // Re-register hotkeys after settings form closes
+        SetupHotkeys();
     }
 
     private void exitToolStripMenuItem_Click(object sender, EventArgs e)
