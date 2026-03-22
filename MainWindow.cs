@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using Microsoft.Win32;
+
 namespace LittleSwitcher;
 
 public class KeyTextBox : TextBox
@@ -46,15 +49,23 @@ public class MainWindow : Form
     private KeyTextBox _txtFocusOtherMonitor = null!;
     private KeyTextBox _txtLastDesktop = null!;
     private KeyTextBox _txtToggleManagement = null!;
+    private KeyTextBox _txtPinWindow = null!;
+    private KeyTextBox _txtToggleTaskbar = null!;
+    private KeyTextBox _txtToggleTitleBar = null!;
+    private CheckBox _chkStartWithWindows = null!;
     private ComboBox _cboModifier = null!;
     private TextBox _statusTextBox = null!;
     private System.Windows.Forms.Timer _updateTimer = null!;
+
+    private AppLauncherConfig _launcherConfig;
+    private Panel _launcherPanel = null!;
 
     public MainWindow(HotkeyConfig config, FocusHistory focusHistory, Action<HotkeyConfig> onSave)
     {
         _config = config;
         _focusHistory = focusHistory;
         _onSave = onSave;
+        _launcherConfig = AppLauncherConfig.Load();
         InitUI();
     }
 
@@ -62,8 +73,8 @@ public class MainWindow : Form
     {
         Text = "LittleSwitcher";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(500, 380);
-        MinimumSize = new Size(500, 380);
+        ClientSize = new Size(500, 450);
+        MinimumSize = new Size(500, 450);
         ShowInTaskbar = true;
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
@@ -71,6 +82,10 @@ public class MainWindow : Form
         var settingsTab = new TabPage("Settings");
         BuildSettingsTab(settingsTab);
         tabs.TabPages.Add(settingsTab);
+
+        var launcherTab = new TabPage("App Launcher");
+        BuildLauncherTab(launcherTab);
+        tabs.TabPages.Add(launcherTab);
 
         var statusTab = new TabPage("Status");
         BuildStatusTab(statusTab);
@@ -134,6 +149,9 @@ public class MainWindow : Form
         _txtFocusOtherMonitor = AddRow(panel, "Focus Other Monitor:", _config.FocusOtherMonitorKey, labelX, inputX, inputW, ref y, rowH);
         _txtLastDesktop = AddRow(panel, "Last Desktop:", _config.LastDesktopKey, labelX, inputX, inputW, ref y, rowH);
         _txtToggleManagement = AddRow(panel, "Toggle Management:", _config.ToggleManagementKey, labelX, inputX, inputW, ref y, rowH);
+        _txtPinWindow = AddRow(panel, "Pin Window:", _config.PinWindowKey, labelX, inputX, inputW, ref y, rowH);
+        _txtToggleTaskbar = AddRow(panel, "Toggle Taskbar:", _config.ToggleTaskbarKey, labelX, inputX, inputW, ref y, rowH);
+        _txtToggleTitleBar = AddRow(panel, "Toggle Title Bar:", _config.ToggleTitleBarKey, labelX, inputX, inputW, ref y, rowH);
 
         // Desktop 1-9 note
         var lblDesktopNote = new Label
@@ -154,6 +172,17 @@ public class MainWindow : Form
             ForeColor = SystemColors.GrayText
         };
         panel.Controls.Add(lblHint);
+        y += rowH;
+
+        // Start with Windows
+        _chkStartWithWindows = new CheckBox
+        {
+            Text = "Start with Windows",
+            Location = new Point(labelX, y + 2),
+            AutoSize = true,
+            Checked = IsAutoStartEnabled()
+        };
+        panel.Controls.Add(_chkStartWithWindows);
         y += rowH;
 
         // Buttons
@@ -262,6 +291,9 @@ public class MainWindow : Form
         _txtFocusOtherMonitor.SetKey(defaults.FocusOtherMonitorKey);
         _txtLastDesktop.SetKey(defaults.LastDesktopKey);
         _txtToggleManagement.SetKey(defaults.ToggleManagementKey);
+        _txtPinWindow.SetKey(defaults.PinWindowKey);
+        _txtToggleTaskbar.SetKey(defaults.ToggleTaskbarKey);
+        _txtToggleTitleBar.SetKey(defaults.ToggleTitleBarKey);
     }
 
     private void SaveConfig()
@@ -278,9 +310,217 @@ public class MainWindow : Form
         _config.FocusOtherMonitorKey = _txtFocusOtherMonitor.RecordedKey;
         _config.LastDesktopKey = _txtLastDesktop.RecordedKey;
         _config.ToggleManagementKey = _txtToggleManagement.RecordedKey;
+        _config.PinWindowKey = _txtPinWindow.RecordedKey;
+        _config.ToggleTaskbarKey = _txtToggleTaskbar.RecordedKey;
+        _config.ToggleTitleBarKey = _txtToggleTitleBar.RecordedKey;
 
         _config.Save();
         _onSave(_config);
+
+        SetAutoStart(_chkStartWithWindows.Checked);
+    }
+
+    private const string RegistryRunPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string RegistryValueName = "LittleSwitcher";
+
+    private static bool IsAutoStartEnabled()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RegistryRunPath, false);
+            return key?.GetValue(RegistryValueName) is not null;
+        }
+        catch { return false; }
+    }
+
+    private static void SetAutoStart(bool enabled)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RegistryRunPath, true);
+            if (key is null) return;
+            if (enabled)
+            {
+                var exePath = Environment.ProcessPath;
+                if (exePath is not null)
+                    key.SetValue(RegistryValueName, $"\"{exePath}\"");
+            }
+            else
+            {
+                key.DeleteValue(RegistryValueName, false);
+            }
+        }
+        catch { }
+    }
+
+    private void BuildLauncherTab(TabPage tab)
+    {
+        _launcherPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true
+        };
+
+        var btnAdd = new Button
+        {
+            Text = "Add App",
+            Size = new Size(80, 28),
+            Location = new Point(16, 8),
+            Tag = "AddButton"
+        };
+        btnAdd.Click += (_, _) =>
+        {
+            _launcherConfig.Entries.Add(new AppLauncherEntry());
+            _launcherConfig.Save();
+            RebuildLauncherRows();
+        };
+        _launcherPanel.Controls.Add(btnAdd);
+
+        tab.Controls.Add(_launcherPanel);
+        RebuildLauncherRows();
+    }
+
+    private void RebuildLauncherRows()
+    {
+        // Remove all controls except the Add button
+        for (int i = _launcherPanel.Controls.Count - 1; i >= 0; i--)
+        {
+            var ctrl = _launcherPanel.Controls[i];
+            if (ctrl.Tag as string != "AddButton")
+            {
+                _launcherPanel.Controls.RemoveAt(i);
+                ctrl.Dispose();
+            }
+        }
+
+        int y = 44;
+        const int rowH = 34;
+
+        for (int idx = 0; idx < _launcherConfig.Entries.Count; idx++)
+        {
+            var entry = _launcherConfig.Entries[idx];
+            var capturedIndex = idx;
+
+            var nudVD = new NumericUpDown
+            {
+                Minimum = 1,
+                Maximum = 9,
+                Value = Math.Clamp(entry.VirtualDesktop, 1, 9),
+                Width = 42,
+                Location = new Point(16, y)
+            };
+            nudVD.ValueChanged += (_, _) =>
+            {
+                entry.VirtualDesktop = (int)nudVD.Value;
+                _launcherConfig.Save();
+            };
+
+            var txtName = new TextBox
+            {
+                Text = entry.AppName,
+                Width = 90,
+                Location = new Point(64, y),
+                PlaceholderText = "Name"
+            };
+            txtName.TextChanged += (_, _) =>
+            {
+                entry.AppName = txtName.Text;
+                _launcherConfig.Save();
+            };
+
+            var txtCmd = new TextBox
+            {
+                Text = entry.Command,
+                Width = 160,
+                Location = new Point(160, y),
+                PlaceholderText = "Command"
+            };
+            txtCmd.TextChanged += (_, _) =>
+            {
+                entry.Command = txtCmd.Text;
+                _launcherConfig.Save();
+            };
+
+            var btnRun = new Button
+            {
+                Text = "Run",
+                Size = new Size(50, 24),
+                Location = new Point(326, y)
+            };
+            btnRun.Click += (_, _) => LaunchApp(entry);
+
+            var btnRemove = new Button
+            {
+                Text = "X",
+                Size = new Size(30, 24),
+                Location = new Point(382, y)
+            };
+            btnRemove.Click += (_, _) =>
+            {
+                _launcherConfig.Entries.RemoveAt(capturedIndex);
+                _launcherConfig.Save();
+                RebuildLauncherRows();
+            };
+
+            _launcherPanel.Controls.Add(nudVD);
+            _launcherPanel.Controls.Add(txtName);
+            _launcherPanel.Controls.Add(txtCmd);
+            _launcherPanel.Controls.Add(btnRun);
+            _launcherPanel.Controls.Add(btnRemove);
+
+            y += rowH;
+        }
+    }
+
+    private void LaunchApp(AppLauncherEntry entry)
+    {
+        try
+        {
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = entry.Command,
+                Arguments = entry.Arguments,
+                UseShellExecute = true
+            });
+
+            if (process == null) return;
+
+            var targetDesktop = entry.VirtualDesktop - 1; // convert 1-based to 0-based
+            var pollCount = 0;
+            var pollTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            pollTimer.Tick += (_, _) =>
+            {
+                pollCount++;
+                try
+                {
+                    process.Refresh();
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                    {
+                        pollTimer.Stop();
+                        pollTimer.Dispose();
+                        var hwnd = process.MainWindowHandle;
+                        VirtualDesktopInterop.MoveWindowToDesktopNumber(hwnd, targetDesktop);
+                        _focusHistory.AddOrMoveToFront(hwnd);
+                    }
+                    else if (pollCount >= 25) // 5 seconds max
+                    {
+                        pollTimer.Stop();
+                        pollTimer.Dispose();
+                    }
+                }
+                catch
+                {
+                    pollTimer.Stop();
+                    pollTimer.Dispose();
+                }
+            };
+            pollTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to launch: {ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

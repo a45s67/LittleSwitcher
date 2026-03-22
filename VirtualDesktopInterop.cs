@@ -64,4 +64,19 @@ public static class VirtualDesktopInterop
             return -1;
         }
     }
+
+    public static void PinWindow(IntPtr hWnd)
+    {
+        try { VirtualDesktop.PinWindow(hWnd); } catch { }
+    }
+
+    public static void UnpinWindow(IntPtr hWnd)
+    {
+        try { VirtualDesktop.UnpinWindow(hWnd); } catch { }
+    }
+
+    public static bool IsPinnedWindow(IntPtr hWnd)
+    {
+        try { return VirtualDesktop.IsPinnedWindow(hWnd); } catch { return false; }
+    }
 }

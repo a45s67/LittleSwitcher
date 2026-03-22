@@ -63,6 +63,17 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 - [Slions.VirtualDesktop](https://github.com/Slions/VirtualDesktop) - Pure C# virtual desktop management via COM interop
 
+## Roadmap
+
+- [x] Configurable hotkeys via Settings UI
+- [x] Tabbed main window (Settings + Status)
+- [ ] Move mouse to center of window on focus switch
+- [ ] Autorun toggle (Start with Windows via registry, not a service)
+- [ ] Pin window to all desktops (toggle hotkey)
+- [ ] Toggle taskbar visibility (hotkey, restore on exit)
+- [ ] Toggle window title bar (hotkey, show floating name overlay for 3s on focus switch)
+- [ ] App Launcher tab (configure apps to launch on specific virtual desktops, auto-add to managed list)
+
 ## License
 
 This project is open source.

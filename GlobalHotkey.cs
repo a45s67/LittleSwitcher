@@ -20,6 +20,7 @@ public class GlobalHotkey
 
     // Virtual Key Codes
     public const uint VK_A = 0x41;
+    public const uint VK_P = 0x50;
     public const uint VK_W = 0x57;
     public const uint VK_1 = 0x31;
     public const uint VK_2 = 0x32;
@@ -32,6 +33,8 @@ public class GlobalHotkey
     public const uint VK_9 = 0x39;
     public const uint VK_OEM_4 = 0xDB; // [ key
     public const uint VK_OEM_5 = 0xDC; // \ key
+    public const uint VK_H = 0x48;
+    public const uint VK_T = 0x54;
     public const uint VK_OEM_6 = 0xDD; // ] key
 
     private readonly IntPtr _windowHandle;

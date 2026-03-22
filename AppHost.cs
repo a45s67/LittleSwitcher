@@ -7,6 +7,7 @@ public partial class AppHost : Form
     private FocusHistory _focusHistory;
     private GlobalHotkey _globalHotkey;
     private HotkeyConfig _hotkeyConfig;
+    private HashSet<IntPtr> _titleBarHiddenWindows = new();
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
@@ -43,6 +44,16 @@ public partial class AppHost : Form
         BeginInvoke(() => ShowMainWindow());
     }
 
+    private void FocusWindowWithOverlay(IntPtr hwnd)
+    {
+        WindowHelper.FocusWindow(hwnd);
+        if (_titleBarHiddenWindows.Contains(hwnd))
+        {
+            var title = WindowHelper.GetWindowTitle(hwnd);
+            TitleOverlay.ShowOverlay(title, hwnd);
+        }
+    }
+
     private void SetupHotkeys()
     {
         _globalHotkey.UnregisterAll();
@@ -54,14 +65,14 @@ public partial class AppHost : Form
         {
             var nextWindow = _focusHistory.GetNextInCurrentContext();
             if (nextWindow.HasValue && nextWindow.Value != IntPtr.Zero)
-                WindowHelper.FocusWindow(nextWindow.Value);
+                FocusWindowWithOverlay(nextWindow.Value);
         });
 
         _globalHotkey.RegisterHotkey(mod, cfg.FocusOtherMonitorKey, () =>
         {
             var window = _focusHistory.GetLastFocusedOnDifferentMonitor();
             if (window.HasValue && window.Value != IntPtr.Zero)
-                WindowHelper.FocusWindow(window.Value);
+                FocusWindowWithOverlay(window.Value);
         });
 
         _globalHotkey.RegisterHotkey(mod, cfg.LastDesktopKey, () =>
@@ -71,7 +82,7 @@ public partial class AppHost : Form
             VirtualDesktopInterop.GoToDesktopNumber(lastDesktop);
             var window = _focusHistory.GetLastFocusedWindowOnDesktop(lastDesktop);
             if (window.HasValue && window.Value != IntPtr.Zero)
-                WindowHelper.FocusWindow(window.Value);
+                FocusWindowWithOverlay(window.Value);
         });
 
         _globalHotkey.RegisterHotkey(mod, cfg.ToggleManagementKey, () =>
@@ -79,6 +90,40 @@ public partial class AppHost : Form
             var currentWindow = WindowHelper.GetForegroundWindow();
             if (currentWindow != IntPtr.Zero && currentWindow != this.Handle)
                 _focusHistory.ToggleWindowManagement(currentWindow);
+        });
+
+        _globalHotkey.RegisterHotkey(mod, cfg.PinWindowKey, () =>
+        {
+            var hwnd = WindowHelper.GetForegroundWindow();
+            if (hwnd != IntPtr.Zero && hwnd != this.Handle)
+            {
+                if (VirtualDesktopInterop.IsPinnedWindow(hwnd))
+                    VirtualDesktopInterop.UnpinWindow(hwnd);
+                else
+                    VirtualDesktopInterop.PinWindow(hwnd);
+            }
+        });
+
+        _globalHotkey.RegisterHotkey(mod, cfg.ToggleTaskbarKey, () => WindowHelper.ToggleTaskbar());
+
+        _globalHotkey.RegisterHotkey(mod, cfg.ToggleTitleBarKey, () =>
+        {
+            var hwnd = WindowHelper.GetForegroundWindow();
+            if (hwnd != IntPtr.Zero && hwnd != this.Handle)
+            {
+                if (_titleBarHiddenWindows.Contains(hwnd))
+                {
+                    WindowHelper.SetTitleBarVisible(hwnd, true);
+                    _titleBarHiddenWindows.Remove(hwnd);
+                }
+                else
+                {
+                    WindowHelper.SetTitleBarVisible(hwnd, false);
+                    _titleBarHiddenWindows.Add(hwnd);
+                    var title = WindowHelper.GetWindowTitle(hwnd);
+                    TitleOverlay.ShowOverlay(title, hwnd);
+                }
+            }
         });
 
         for (uint i = 1; i <= 9; i++)
@@ -93,7 +138,7 @@ public partial class AppHost : Form
                 VirtualDesktopInterop.GoToDesktopNumber(capturedDesktopNumber);
                 var window = _focusHistory.GetLastFocusedWindowOnDesktop(capturedDesktopNumber);
                 if (window.HasValue && window.Value != IntPtr.Zero)
-                    WindowHelper.FocusWindow(window.Value);
+                    FocusWindowWithOverlay(window.Value);
             });
         }
     }
@@ -160,6 +205,11 @@ public partial class AppHost : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        foreach (var hwnd in _titleBarHiddenWindows)
+            WindowHelper.SetTitleBarVisible(hwnd, true);
+        _titleBarHiddenWindows.Clear();
+
+        WindowHelper.ShowTaskbar();
         notifyIcon.Visible = false;
         base.OnFormClosing(e);
     }

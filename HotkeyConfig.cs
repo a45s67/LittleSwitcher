@@ -78,6 +78,9 @@ public class HotkeyConfig
     public uint FocusOtherMonitorKey { get; set; } = GlobalHotkey.VK_OEM_6;
     public uint LastDesktopKey { get; set; } = GlobalHotkey.VK_OEM_5;
     public uint ToggleManagementKey { get; set; } = GlobalHotkey.VK_A;
+    public uint PinWindowKey { get; set; } = GlobalHotkey.VK_P;
+    public uint ToggleTaskbarKey { get; set; } = GlobalHotkey.VK_T;
+    public uint ToggleTitleBarKey { get; set; } = GlobalHotkey.VK_H;
 
     private static string ConfigPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
