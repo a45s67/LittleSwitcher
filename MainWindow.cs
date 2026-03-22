@@ -200,16 +200,23 @@ public class MainWindow : Form
 
         var btnMinimize = new Button
         {
-            Text = "Save && Minimize",
-            Size = new Size(120, 28),
-            Location = new Point(btnExit.Left - 128, y)
+            Text = "Minimize",
+            Size = new Size(80, 28),
+            Location = new Point(btnExit.Left - 88, y)
         };
         btnMinimize.Click += (_, _) =>
         {
-            SaveConfig();
             DialogResult = DialogResult.OK;
             Close();
         };
+
+        var btnSave = new Button
+        {
+            Text = "Save",
+            Size = new Size(80, 28),
+            Location = new Point(btnMinimize.Left - 88, y)
+        };
+        btnSave.Click += (_, _) => SaveConfig();
 
         var btnReset = new Button
         {
@@ -221,9 +228,10 @@ public class MainWindow : Form
 
         panel.Controls.Add(btnExit);
         panel.Controls.Add(btnMinimize);
+        panel.Controls.Add(btnSave);
         panel.Controls.Add(btnReset);
 
-        AcceptButton = btnMinimize;
+        AcceptButton = btnSave;
 
         tab.Controls.Add(panel);
     }

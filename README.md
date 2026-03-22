@@ -9,7 +9,12 @@ A lightweight Windows application for enhanced window and virtual desktop switch
 - **Focus Other Monitor**: Focus last focused window on another screen (multi-monitor)
 - **Last Desktop**: Jump to and focus last focused window in last virtual desktop
 - **Toggle Management**: Add/remove current window to/from management system
-- **Configurable Hotkeys**: All shortcuts are customizable via the Settings UI (right-click tray icon → Settings)
+- **Pin Window**: Pin/unpin current window to all virtual desktops
+- **Toggle Taskbar**: Hide/show the Windows taskbar
+- **Toggle Title Bar**: Hide window title bar with floating overlay on focus
+- **App Launcher**: Configure apps to launch on specific virtual desktops
+- **Autorun**: Start with Windows option
+- **Configurable Hotkeys**: All shortcuts are customizable via the Settings UI
 
 ### Default Hotkeys
 
@@ -20,6 +25,9 @@ A lightweight Windows application for enhanced window and virtual desktop switch
 | Switch Desktop 1-9 | Alt + 1-9 |
 | Focus Other Monitor | Alt + ] |
 | Last Desktop | Alt + \\ |
+| Pin Window | Alt + P |
+| Toggle Taskbar | Alt + T |
+| Toggle Title Bar | Alt + H |
 
 ## How It Works
 
@@ -45,7 +53,7 @@ A lightweight Windows application for enhanced window and virtual desktop switch
 ## Requirements
 
 - Windows 10/11 with Virtual Desktop support
-- .NET 8.0 Runtime
+- .NET 9.0 Runtime (or use self-contained build)
 
 ## Building from Source
 
@@ -61,18 +69,18 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 ## Dependencies
 
-- [Slions.VirtualDesktop](https://github.com/Slions/VirtualDesktop) - Pure C# virtual desktop management via COM interop
+- [Slions.VirtualDesktop](https://github.com/Slion/VirtualDesktop) - Pure C# virtual desktop management via COM interop (fork of Grabacr07/VirtualDesktop)
 
 ## Roadmap
 
 - [x] Configurable hotkeys via Settings UI
 - [x] Tabbed main window (Settings + Status)
-- [ ] Move mouse to center of window on focus switch
-- [ ] Autorun toggle (Start with Windows via registry, not a service)
-- [ ] Pin window to all desktops (toggle hotkey)
-- [ ] Toggle taskbar visibility (hotkey, restore on exit)
-- [ ] Toggle window title bar (hotkey, show floating name overlay for 3s on focus switch)
-- [ ] App Launcher tab (configure apps to launch on specific virtual desktops, auto-add to managed list)
+- [x] Move mouse to center of window on focus switch
+- [x] Autorun toggle (Start with Windows via registry)
+- [x] Pin window to all desktops (toggle hotkey)
+- [x] Toggle taskbar visibility (hotkey, restore on exit)
+- [x] Toggle window title bar (hotkey, show floating name overlay for 3s on focus switch)
+- [x] App Launcher tab (configure apps to launch on specific virtual desktops)
 
 ## License
 
