@@ -1,26 +1,67 @@
-using System.Runtime.InteropServices;
+using WindowsDesktop;
 
 namespace LittleSwitcher;
 
 public static class VirtualDesktopInterop
 {
-    private const string DllName = "VirtualDesktopAccessor.dll";
+    public static int GetCurrentDesktopNumber()
+    {
+        var desktops = VirtualDesktop.GetDesktops();
+        var current = VirtualDesktop.Current;
+        for (int i = 0; i < desktops.Length; i++)
+        {
+            if (desktops[i].Id == current.Id)
+                return i;
+        }
+        return 0;
+    }
 
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int GetCurrentDesktopNumber();
+    public static int GetDesktopCount()
+    {
+        return VirtualDesktop.GetDesktops().Length;
+    }
 
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int GetDesktopCount();
+    public static void GoToDesktopNumber(int desktopNumber)
+    {
+        var desktops = VirtualDesktop.GetDesktops();
+        if (desktopNumber >= 0 && desktopNumber < desktops.Length)
+        {
+            desktops[desktopNumber].Switch();
+        }
+    }
 
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern void GoToDesktopNumber(int desktopNumber);
+    public static void MoveWindowToDesktopNumber(IntPtr hWnd, int desktopNumber)
+    {
+        var desktops = VirtualDesktop.GetDesktops();
+        if (desktopNumber >= 0 && desktopNumber < desktops.Length)
+        {
+            VirtualDesktop.MoveToDesktop(hWnd, desktops[desktopNumber]);
+        }
+    }
 
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern void MoveWindowToDesktopNumber(IntPtr hWnd, int desktopNumber);
+    public static bool IsWindowOnCurrentVirtualDesktop(IntPtr hWnd)
+    {
+        return VirtualDesktop.IsCurrentVirtualDesktop(hWnd);
+    }
 
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool IsWindowOnCurrentVirtualDesktop(IntPtr hWnd);
+    public static int GetWindowDesktopNumber(IntPtr hWnd)
+    {
+        try
+        {
+            var desktop = VirtualDesktop.FromHwnd(hWnd);
+            if (desktop == null) return -1;
 
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int GetWindowDesktopNumber(IntPtr hWnd);
+            var desktops = VirtualDesktop.GetDesktops();
+            for (int i = 0; i < desktops.Length; i++)
+            {
+                if (desktops[i].Id == desktop.Id)
+                    return i;
+            }
+            return -1;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
 }
