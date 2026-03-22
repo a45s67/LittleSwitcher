@@ -34,7 +34,7 @@ public class HotkeyBinding
         }
     }
 
-    private static string KeyToString(uint vk)
+    public static string KeyToString(uint vk)
     {
         return vk switch
         {
@@ -73,11 +73,11 @@ public class HotkeyBinding
 
 public class HotkeyConfig
 {
-    public HotkeyBinding CycleWindows { get; set; } = new(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_W);
-    public HotkeyBinding FocusOtherMonitor { get; set; } = new(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_6);
-    public HotkeyBinding LastDesktop { get; set; } = new(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_OEM_5);
-    public HotkeyBinding ToggleManagement { get; set; } = new(GlobalHotkey.MOD_ALT, GlobalHotkey.VK_A);
-    public uint SwitchDesktopModifier { get; set; } = GlobalHotkey.MOD_ALT;
+    public uint Modifier { get; set; } = GlobalHotkey.MOD_ALT;
+    public uint CycleWindowsKey { get; set; } = GlobalHotkey.VK_W;
+    public uint FocusOtherMonitorKey { get; set; } = GlobalHotkey.VK_OEM_6;
+    public uint LastDesktopKey { get; set; } = GlobalHotkey.VK_OEM_5;
+    public uint ToggleManagementKey { get; set; } = GlobalHotkey.VK_A;
 
     private static string ConfigPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

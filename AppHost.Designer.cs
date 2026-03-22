@@ -1,40 +1,26 @@
-﻿namespace LittleSwitcher;
+namespace LittleSwitcher;
 
 partial class AppHost
 {
-    /// <summary>
-    ///  Required designer variable.
-    /// </summary>
     private System.ComponentModel.IContainer components = null;
 
-    /// <summary>
-    ///  Clean up any resources being used.
-    /// </summary>
-    /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
             _globalHotkey?.UnregisterAll();
-            
+
             if (_locationHook != IntPtr.Zero)
             {
                 UnhookWinEvent(_locationHook);
             }
-            
-            // Hide and dispose of tray icon
+
             if (notifyIcon != null)
             {
                 notifyIcon.Visible = false;
                 notifyIcon.Dispose();
             }
-            
-            // Dispose status window
-            if (_statusWindow != null)
-            {
-                _statusWindow.Dispose();
-            }
-            
+
             if (components != null)
             {
                 components.Dispose();
@@ -43,19 +29,12 @@ partial class AppHost
         base.Dispose(disposing);
     }
 
-    #region Windows Form Designer generated code
-
-    /// <summary>
-    ///  Required method for Designer support - do not modify
-    ///  the contents of this method with the code editor.
-    /// </summary>
     private void InitializeComponent()
     {
         this.components = new System.ComponentModel.Container();
         this.notifyIcon = new System.Windows.Forms.NotifyIcon(this.components);
         this.contextMenuStrip = new System.Windows.Forms.ContextMenuStrip(this.components);
-        this.showStatusToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-        this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+        this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
         this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
         this.contextMenuStrip.SuspendLayout();
         this.SuspendLayout();
@@ -65,39 +44,33 @@ partial class AppHost
         this.notifyIcon.ContextMenuStrip = this.contextMenuStrip;
         this.notifyIcon.Text = "LittleSwitcher";
         this.notifyIcon.Visible = true;
+        this.notifyIcon.DoubleClick += (s, e) => ShowMainWindow();
         //
         // contextMenuStrip
         //
         this.contextMenuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-        this.showStatusToolStripMenuItem,
-        this.settingsToolStripMenuItem,
-        this.exitToolStripMenuItem});
+            this.openToolStripMenuItem,
+            this.exitToolStripMenuItem});
         this.contextMenuStrip.Name = "contextMenuStrip";
-        this.contextMenuStrip.Size = new System.Drawing.Size(140, 48);
-        // 
-        // showStatusToolStripMenuItem
-        // 
-        this.showStatusToolStripMenuItem.Name = "showStatusToolStripMenuItem";
-        this.showStatusToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
-        this.showStatusToolStripMenuItem.Text = "Toggle Status";
-        this.showStatusToolStripMenuItem.Click += new System.EventHandler(this.showStatusToolStripMenuItem_Click);
+        this.contextMenuStrip.Size = new System.Drawing.Size(110, 48);
         //
-        // settingsToolStripMenuItem
+        // openToolStripMenuItem
         //
-        this.settingsToolStripMenuItem.Name = "settingsToolStripMenuItem";
-        this.settingsToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
-        this.settingsToolStripMenuItem.Text = "Settings";
-        this.settingsToolStripMenuItem.Click += new System.EventHandler(this.settingsToolStripMenuItem_Click);
+        this.openToolStripMenuItem.Name = "openToolStripMenuItem";
+        this.openToolStripMenuItem.Size = new System.Drawing.Size(109, 22);
+        this.openToolStripMenuItem.Text = "Open";
+        this.openToolStripMenuItem.Font = new System.Drawing.Font(this.openToolStripMenuItem.Font, System.Drawing.FontStyle.Bold);
+        this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
         //
         // exitToolStripMenuItem
-        // 
+        //
         this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-        this.exitToolStripMenuItem.Size = new System.Drawing.Size(139, 22);
+        this.exitToolStripMenuItem.Size = new System.Drawing.Size(109, 22);
         this.exitToolStripMenuItem.Text = "Exit";
         this.exitToolStripMenuItem.Click += new System.EventHandler(this.exitToolStripMenuItem_Click);
-        // 
+        //
         // AppHost
-        // 
+        //
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
         this.ClientSize = new System.Drawing.Size(800, 450);
         this.Name = "AppHost";
@@ -108,9 +81,6 @@ partial class AppHost
 
     private System.Windows.Forms.NotifyIcon notifyIcon;
     private System.Windows.Forms.ContextMenuStrip contextMenuStrip;
-    private System.Windows.Forms.ToolStripMenuItem showStatusToolStripMenuItem;
-    private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;
+    private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;
     private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
-
-    #endregion
 }
