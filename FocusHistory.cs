@@ -324,7 +324,16 @@ public class FocusHistory
 
         lock (_lock)
         {
-            var desktop = VirtualDesktopInterop.GetWindowDesktopNumber(hWnd);
+            int desktop;
+            try
+            {
+                desktop = VirtualDesktopInterop.GetWindowDesktopNumber(hWnd);
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ToggleManagement] COMException for 0x{hWnd:X} [{title}]: {ex.Message}");
+                return;
+            }
             if (desktop == -1)
             {
                 return;

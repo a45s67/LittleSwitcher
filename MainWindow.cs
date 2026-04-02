@@ -48,7 +48,6 @@ public class MainWindow : Form
     private KeyTextBox _txtCycleWindows = null!;
     private KeyTextBox _txtFocusOtherMonitor = null!;
     private KeyTextBox _txtLastDesktop = null!;
-    private KeyTextBox _txtToggleManagement = null!;
     private KeyTextBox _txtPinWindow = null!;
     private KeyTextBox _txtToggleTaskbar = null!;
     private KeyTextBox _txtToggleTitleBar = null!;
@@ -148,7 +147,6 @@ public class MainWindow : Form
         _txtCycleWindows = AddRow(panel, "Cycle Windows:", _config.CycleWindowsKey, labelX, inputX, inputW, ref y, rowH);
         _txtFocusOtherMonitor = AddRow(panel, "Focus Other Monitor:", _config.FocusOtherMonitorKey, labelX, inputX, inputW, ref y, rowH);
         _txtLastDesktop = AddRow(panel, "Last Desktop:", _config.LastDesktopKey, labelX, inputX, inputW, ref y, rowH);
-        _txtToggleManagement = AddRow(panel, "Toggle Management:", _config.ToggleManagementKey, labelX, inputX, inputW, ref y, rowH);
         _txtPinWindow = AddRow(panel, "Pin Window:", _config.PinWindowKey, labelX, inputX, inputW, ref y, rowH);
         _txtToggleTaskbar = AddRow(panel, "Toggle Taskbar:", _config.ToggleTaskbarKey, labelX, inputX, inputW, ref y, rowH);
         _txtToggleTitleBar = AddRow(panel, "Toggle Title Bar:", _config.ToggleTitleBarKey, labelX, inputX, inputW, ref y, rowH);
@@ -298,7 +296,6 @@ public class MainWindow : Form
         _txtCycleWindows.SetKey(defaults.CycleWindowsKey);
         _txtFocusOtherMonitor.SetKey(defaults.FocusOtherMonitorKey);
         _txtLastDesktop.SetKey(defaults.LastDesktopKey);
-        _txtToggleManagement.SetKey(defaults.ToggleManagementKey);
         _txtPinWindow.SetKey(defaults.PinWindowKey);
         _txtToggleTaskbar.SetKey(defaults.ToggleTaskbarKey);
         _txtToggleTitleBar.SetKey(defaults.ToggleTitleBarKey);
@@ -317,7 +314,6 @@ public class MainWindow : Form
         _config.CycleWindowsKey = _txtCycleWindows.RecordedKey;
         _config.FocusOtherMonitorKey = _txtFocusOtherMonitor.RecordedKey;
         _config.LastDesktopKey = _txtLastDesktop.RecordedKey;
-        _config.ToggleManagementKey = _txtToggleManagement.RecordedKey;
         _config.PinWindowKey = _txtPinWindow.RecordedKey;
         _config.ToggleTaskbarKey = _txtToggleTaskbar.RecordedKey;
         _config.ToggleTitleBarKey = _txtToggleTitleBar.RecordedKey;

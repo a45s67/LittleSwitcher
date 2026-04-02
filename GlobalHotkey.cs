@@ -19,7 +19,6 @@ public class GlobalHotkey
     public const uint MOD_WIN = 0x0008;
 
     // Virtual Key Codes
-    public const uint VK_A = 0x41;
     public const uint VK_P = 0x50;
     public const uint VK_W = 0x57;
     public const uint VK_1 = 0x31;
