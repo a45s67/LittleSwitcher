@@ -411,7 +411,7 @@ public class MainWindow : Form
                 Maximum = 9,
                 Value = Math.Clamp(entry.VirtualDesktop, 1, 9),
                 Width = 42,
-                Location = new Point(16, y)
+                Location = new Point(8, y)
             };
             nudVD.ValueChanged += (_, _) =>
             {
@@ -422,8 +422,8 @@ public class MainWindow : Form
             var txtName = new TextBox
             {
                 Text = entry.AppName,
-                Width = 90,
-                Location = new Point(64, y),
+                Width = 100,
+                Location = new Point(54, y),
                 PlaceholderText = "Name"
             };
             txtName.TextChanged += (_, _) =>
@@ -435,8 +435,8 @@ public class MainWindow : Form
             var txtCmd = new TextBox
             {
                 Text = entry.Command,
-                Width = 160,
-                Location = new Point(160, y),
+                Width = 190,
+                Location = new Point(158, y),
                 PlaceholderText = "Command"
             };
             txtCmd.TextChanged += (_, _) =>
@@ -448,16 +448,16 @@ public class MainWindow : Form
             var btnRun = new Button
             {
                 Text = "Run",
-                Size = new Size(50, 24),
-                Location = new Point(326, y)
+                Size = new Size(55, 30),
+                Location = new Point(354, y)
             };
             btnRun.Click += (_, _) => LaunchApp(entry);
 
             var btnRemove = new Button
             {
                 Text = "X",
-                Size = new Size(30, 24),
-                Location = new Point(382, y)
+                Size = new Size(35, 30),
+                Location = new Point(402, y)
             };
             btnRemove.Click += (_, _) =>
             {
@@ -480,40 +480,67 @@ public class MainWindow : Form
     {
         try
         {
-            var process = Process.Start(new ProcessStartInfo
+            // Snapshot existing top-level windows before launch
+            var existingWindows = new HashSet<IntPtr>();
+            WindowHelper.EnumWindows((hwnd, _) =>
+            {
+                if (WindowHelper.IsWindowVisible(hwnd))
+                    existingWindows.Add(hwnd);
+                return true;
+            }, IntPtr.Zero);
+
+            Process.Start(new ProcessStartInfo
             {
                 FileName = entry.Command,
                 Arguments = entry.Arguments,
                 UseShellExecute = true
             });
 
-            if (process == null) return;
-
             var targetDesktop = entry.VirtualDesktop - 1; // convert 1-based to 0-based
             var pollCount = 0;
-            var pollTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            var pollTimer = new System.Windows.Forms.Timer { Interval = 300 };
             pollTimer.Tick += (_, _) =>
             {
                 pollCount++;
                 try
                 {
-                    process.Refresh();
-                    if (process.MainWindowHandle != IntPtr.Zero)
+                    IntPtr newWindow = IntPtr.Zero;
+                    WindowHelper.EnumWindows((hwnd, _) =>
+                    {
+                        if (WindowHelper.IsWindowVisible(hwnd) && !existingWindows.Contains(hwnd))
+                        {
+                            var title = WindowHelper.GetWindowTitle(hwnd);
+                            if (!string.IsNullOrEmpty(title) && title.Length >= 2)
+                            {
+                                newWindow = hwnd;
+                                return false;
+                            }
+                        }
+                        return true;
+                    }, IntPtr.Zero);
+
+                    System.Diagnostics.Debug.WriteLine($"[LaunchApp] Poll #{pollCount}: newWindow=0x{newWindow:X}, target desktop={targetDesktop}");
+
+                    if (newWindow != IntPtr.Zero)
                     {
                         pollTimer.Stop();
                         pollTimer.Dispose();
-                        var hwnd = process.MainWindowHandle;
-                        VirtualDesktopInterop.MoveWindowToDesktopNumber(hwnd, targetDesktop);
-                        _focusHistory.AddOrMoveToFront(hwnd);
+                        var title = WindowHelper.GetWindowTitle(newWindow);
+                        System.Diagnostics.Debug.WriteLine($"[LaunchApp] Found new window 0x{newWindow:X} [{title}], moving to desktop {targetDesktop}");
+                        VirtualDesktopInterop.MoveWindowToDesktopNumber(newWindow, targetDesktop);
+                        _focusHistory.AddOrMoveToFront(newWindow);
+                        System.Diagnostics.Debug.WriteLine($"[LaunchApp] Done for 0x{newWindow:X}");
                     }
-                    else if (pollCount >= 25) // 5 seconds max
+                    else if (pollCount >= 17) // ~5 seconds max
                     {
+                        System.Diagnostics.Debug.WriteLine($"[LaunchApp] Timeout waiting for new window");
                         pollTimer.Stop();
                         pollTimer.Dispose();
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[LaunchApp] Error: {ex.Message}");
                     pollTimer.Stop();
                     pollTimer.Dispose();
                 }
