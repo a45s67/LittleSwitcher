@@ -56,12 +56,28 @@ public partial class AppHost : Form
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
     private const int WH_MOUSE_LL = 14;
     private const int WM_LBUTTONDOWN = 0x0201;
+    private const int VK_MENU = 0x12;
+    private const uint MAPVK_VK_TO_VSC = 0;
+    private const uint WM_KEYUP = 0x0101;
+    private const uint WM_SYSKEYUP = 0x0105;
     private const uint WM_APP_TOGGLE_MANAGEMENT = 0x8001; // WM_APP + 1
 
     private IntPtr _mouseHook;
     private LowLevelMouseProc? _mouseProc;
+
+    private int ConfiguredModifierVirtualKey => _hotkeyConfig.Modifier switch
+    {
+        GlobalHotkey.MOD_ALT => 0x12,      // VK_MENU
+        GlobalHotkey.MOD_CONTROL => 0x11,  // VK_CONTROL
+        GlobalHotkey.MOD_SHIFT => 0x10,    // VK_SHIFT
+        GlobalHotkey.MOD_WIN => 0x5B,      // VK_LWIN
+        _ => 0x12
+    };
 
     public AppHost()
     {
@@ -116,6 +132,8 @@ public partial class AppHost : Form
 
         _globalHotkey.RegisterHotkey(mod, cfg.LastDesktopKey, () =>
         {
+            ReleaseModifierForForegroundApp();
+
             var lastDesktop = _focusHistory.GetLastFocusedDesktop();
             _focusHistory.SetLastFocusedDesktop(VirtualDesktopInterop.GetCurrentDesktopNumber());
             VirtualDesktopInterop.GoToDesktopNumber(lastDesktop);
@@ -165,6 +183,8 @@ public partial class AppHost : Form
 
             _globalHotkey.RegisterHotkey(mod, virtualKey, () =>
             {
+                ReleaseModifierForForegroundApp();
+
                 var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
                 _focusHistory.SetLastFocusedDesktop(currentDesktop);
                 VirtualDesktopInterop.GoToDesktopNumber(capturedDesktopNumber);
@@ -173,6 +193,23 @@ public partial class AppHost : Form
                     FocusWindowWithOverlay(window.Value);
             });
         }
+    }
+
+    private void ReleaseModifierForForegroundApp()
+    {
+        var hwnd = WindowHelper.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero || hwnd == this.Handle)
+            return;
+
+        var modifierKey = ConfiguredModifierVirtualKey;
+        var scanCode = MapVirtualKey((uint)modifierKey, MAPVK_VK_TO_VSC);
+        var message = modifierKey == VK_MENU ? WM_SYSKEYUP : WM_KEYUP;
+        var lParam = 1 | ((int)scanCode << 16) | (1 << 30) | unchecked((int)0x80000000);
+
+        if (modifierKey == VK_MENU)
+            lParam |= 1 << 29;
+
+        PostMessage(hwnd, message, (IntPtr)modifierKey, (IntPtr)lParam);
     }
 
     private void SetupMouseHook()
@@ -186,14 +223,7 @@ public partial class AppHost : Form
     {
         if (nCode >= 0 && wParam == (IntPtr)WM_LBUTTONDOWN)
         {
-            int vkModifier = _hotkeyConfig.Modifier switch
-            {
-                GlobalHotkey.MOD_ALT => 0x12,     // VK_MENU
-                GlobalHotkey.MOD_CONTROL => 0x11,  // VK_CONTROL
-                GlobalHotkey.MOD_SHIFT => 0x10,    // VK_SHIFT
-                GlobalHotkey.MOD_WIN => 0x5B,      // VK_LWIN
-                _ => 0x12
-            };
+            int vkModifier = ConfiguredModifierVirtualKey;
 
             if ((GetAsyncKeyState(vkModifier) & 0x8000) != 0)
             {
