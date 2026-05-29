@@ -41,7 +41,7 @@ public static class VirtualDesktopInterop
 
     public static bool IsWindowOnCurrentVirtualDesktop(IntPtr hWnd)
     {
-        return VirtualDesktop.IsCurrentVirtualDesktop(hWnd);
+        try { return VirtualDesktop.IsCurrentVirtualDesktop(hWnd); } catch { return false; }
     }
 
     public static int GetWindowDesktopNumber(IntPtr hWnd)

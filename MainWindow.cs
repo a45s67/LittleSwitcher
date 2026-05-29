@@ -42,11 +42,13 @@ public class KeyTextBox : TextBox
 public class MainWindow : Form
 {
     private readonly HotkeyConfig _config;
-    private readonly FocusHistory _focusHistory;
+    private readonly ZOrderWindowSwitcher _windowSwitcher;
     private readonly Action<HotkeyConfig> _onSave;
 
     private KeyTextBox _txtCycleWindows = null!;
     private KeyTextBox _txtFocusOtherMonitor = null!;
+    private KeyTextBox _txtPreviousDesktop = null!;
+    private KeyTextBox _txtNextDesktop = null!;
     private KeyTextBox _txtLastDesktop = null!;
     private KeyTextBox _txtPinWindow = null!;
     private KeyTextBox _txtToggleTaskbar = null!;
@@ -59,10 +61,10 @@ public class MainWindow : Form
     private AppLauncherConfig _launcherConfig;
     private Panel _launcherPanel = null!;
 
-    public MainWindow(HotkeyConfig config, FocusHistory focusHistory, Action<HotkeyConfig> onSave)
+    public MainWindow(HotkeyConfig config, ZOrderWindowSwitcher windowSwitcher, Action<HotkeyConfig> onSave)
     {
         _config = config;
-        _focusHistory = focusHistory;
+        _windowSwitcher = windowSwitcher;
         _onSave = onSave;
         _launcherConfig = AppLauncherConfig.Load();
         InitUI();
@@ -146,6 +148,8 @@ public class MainWindow : Form
         // Key rows
         _txtCycleWindows = AddRow(panel, "Cycle Windows:", _config.CycleWindowsKey, labelX, inputX, inputW, ref y, rowH);
         _txtFocusOtherMonitor = AddRow(panel, "Focus Other Monitor:", _config.FocusOtherMonitorKey, labelX, inputX, inputW, ref y, rowH);
+        _txtPreviousDesktop = AddRow(panel, "Previous Desktop:", _config.PreviousDesktopKey, labelX, inputX, inputW, ref y, rowH);
+        _txtNextDesktop = AddRow(panel, "Next Desktop:", _config.NextDesktopKey, labelX, inputX, inputW, ref y, rowH);
         _txtLastDesktop = AddRow(panel, "Last Desktop:", _config.LastDesktopKey, labelX, inputX, inputW, ref y, rowH);
         _txtPinWindow = AddRow(panel, "Pin Window:", _config.PinWindowKey, labelX, inputX, inputW, ref y, rowH);
         _txtToggleTaskbar = AddRow(panel, "Toggle Taskbar:", _config.ToggleTaskbarKey, labelX, inputX, inputW, ref y, rowH);
@@ -256,7 +260,7 @@ public class MainWindow : Form
     {
         try
         {
-            var statusReport = _focusHistory.GetStatusReport();
+            var statusReport = _windowSwitcher.GetStatusReport();
             var timestampedReport = $"Last Updated: {DateTime.Now:HH:mm:ss}\r\n\r\n{statusReport}";
             if (_statusTextBox.Text != timestampedReport)
                 _statusTextBox.Text = timestampedReport;
@@ -295,6 +299,8 @@ public class MainWindow : Form
         _cboModifier.SelectedIndex = 0;
         _txtCycleWindows.SetKey(defaults.CycleWindowsKey);
         _txtFocusOtherMonitor.SetKey(defaults.FocusOtherMonitorKey);
+        _txtPreviousDesktop.SetKey(defaults.PreviousDesktopKey);
+        _txtNextDesktop.SetKey(defaults.NextDesktopKey);
         _txtLastDesktop.SetKey(defaults.LastDesktopKey);
         _txtPinWindow.SetKey(defaults.PinWindowKey);
         _txtToggleTaskbar.SetKey(defaults.ToggleTaskbarKey);
@@ -313,6 +319,8 @@ public class MainWindow : Form
         };
         _config.CycleWindowsKey = _txtCycleWindows.RecordedKey;
         _config.FocusOtherMonitorKey = _txtFocusOtherMonitor.RecordedKey;
+        _config.PreviousDesktopKey = _txtPreviousDesktop.RecordedKey;
+        _config.NextDesktopKey = _txtNextDesktop.RecordedKey;
         _config.LastDesktopKey = _txtLastDesktop.RecordedKey;
         _config.PinWindowKey = _txtPinWindow.RecordedKey;
         _config.ToggleTaskbarKey = _txtToggleTaskbar.RecordedKey;
@@ -528,7 +536,6 @@ public class MainWindow : Form
                         var title = WindowHelper.GetWindowTitle(newWindow);
                         System.Diagnostics.Debug.WriteLine($"[LaunchApp] Found new window 0x{newWindow:X} [{title}], moving to desktop {targetDesktop}");
                         VirtualDesktopInterop.MoveWindowToDesktopNumber(newWindow, targetDesktop);
-                        _focusHistory.AddOrMoveToFront(newWindow);
                         System.Diagnostics.Debug.WriteLine($"[LaunchApp] Done for 0x{newWindow:X}");
                     }
                     else if (pollCount >= 17) // ~5 seconds max

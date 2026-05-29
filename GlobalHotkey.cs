@@ -30,6 +30,7 @@ public class GlobalHotkey
     public const uint VK_7 = 0x37;
     public const uint VK_8 = 0x38;
     public const uint VK_9 = 0x39;
+    public const uint VK_OEM_2 = 0xBF; // / key
     public const uint VK_OEM_4 = 0xDB; // [ key
     public const uint VK_OEM_5 = 0xDC; // \ key
     public const uint VK_H = 0x48;

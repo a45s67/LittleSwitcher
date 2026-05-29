@@ -4,11 +4,10 @@ A lightweight Windows application for enhanced window and virtual desktop switch
 
 ## Features
 
-- **Cycle Windows**: Cycle through window focus history in current virtual desktop and monitor
+- **Cycle Windows**: Send the current window to the bottom of z-order and focus the top eligible window on the current virtual desktop and monitor
 - **Switch Desktops**: Switch to virtual desktops 1-9
-- **Focus Other Monitor**: Focus last focused window on another screen (multi-monitor)
-- **Last Desktop**: Jump to and focus last focused window in last virtual desktop
-- **Toggle Management**: Add/remove current window to/from management system
+- **Focus Other Monitor**: Focus the top eligible window on another screen (multi-monitor)
+- **Last Desktop**: Jump to the last desktop and focus its top eligible window
 - **Pin Window**: Pin/unpin current window to all virtual desktops
 - **Toggle Taskbar**: Hide/show the Windows taskbar
 - **Toggle Title Bar**: Hide window title bar with floating overlay on focus
@@ -20,9 +19,10 @@ A lightweight Windows application for enhanced window and virtual desktop switch
 
 | Action | Default Shortcut |
 |---|---|
-| Toggle Management | Alt + A |
 | Cycle Windows | Alt + W |
 | Switch Desktop 1-9 | Alt + 1-9 |
+| Previous Desktop | Alt + [ |
+| Next Desktop | Alt + / |
 | Focus Other Monitor | Alt + ] |
 | Last Desktop | Alt + \\ |
 | Pin Window | Alt + P |
@@ -31,19 +31,17 @@ A lightweight Windows application for enhanced window and virtual desktop switch
 
 ## How It Works
 
-### Focus History System
-- Uses hash map with key `(virtual_desktop_id, monitor_id)` and value as circular linked list of windows
-- Each desktop+monitor combination maintains independent focus history
-- Windows must be manually added to management system using the Toggle Management hotkey
-- Cycle Windows cycles through managed windows within current context only
+### Z-order Window Switching
+- Reads Windows top-level z-order on demand instead of maintaining a managed window list
+- Filters windows by current virtual desktop, monitor, visibility, cloaking state, usable rect, and regex include/exclude rules
+- Sends the current window to the bottom on cycle, then focuses the current top eligible window
+- Regex filters live at `%AppData%/LittleSwitcher/window_filters.json`
 
 ### Example Usage
-1. Focus Window 1, press Alt+A to add to management
-2. Focus Window 2, press Alt+A to add to management
-3. Focus Window 3, press Alt+A to add to management (all on same desktop/monitor)
-4. Press Alt+W → focuses Window 1
-5. Press Alt+W again → focuses Window 2
-6. To remove Window 3 from management: focus it and press Alt+A again
+1. Focus the top window on a desktop and monitor
+2. Press Alt+W to send it to the bottom
+3. LittleSwitcher focuses the next top eligible window in the same desktop+monitor context
+4. Edit `%AppData%/LittleSwitcher/window_filters.json` to exclude or include windows by title, class name, or process name
 
 ## Installation
 

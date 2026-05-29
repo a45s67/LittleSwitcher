@@ -18,7 +18,8 @@ The exe may be locked if the app is running — close from tray icon first.
 - **AppHost.cs** — Hidden background form: tray icon, global hotkey registration, WinEvent hooks. Entry point for all hotkey actions.
 - **AppHost.Designer.cs** — Designer code for tray icon and context menu.
 - **MainWindow.cs** — Tabbed settings dialog (Settings, App Launcher, Status tabs). Contains `KeyTextBox` for key capture.
-- **FocusHistory.cs** — Circular linked list per (desktop, monitor) context for window focus tracking.
+- **ZOrderWindowSwitcher.cs** — Reads top-level z-order on demand and selects eligible windows per current desktop/monitor.
+- **WindowFilterConfig.cs** — Regex include/exclude config persisted to `%AppData%/LittleSwitcher/window_filters.json`.
 - **GlobalHotkey.cs** — Win32 RegisterHotKey/UnregisterHotKey wrapper.
 - **HotkeyConfig.cs** — Hotkey config model with JSON persistence to `%AppData%/LittleSwitcher/hotkeys.json`. Also contains `HotkeyBinding` with `KeyToString`.
 - **AppLauncherConfig.cs** — App launcher config with JSON persistence to `%AppData%/LittleSwitcher/launcher.json`.
@@ -31,6 +32,7 @@ The exe may be locked if the app is running — close from tray icon first.
 - Shared modifier (Alt/Ctrl/Shift/Win) + individual key per hotkey action.
 - Hotkeys stay registered while settings dialog is open — KeyTextBox captures raw key without modifier.
 - Config auto-saves on change in App Launcher tab; Settings tab requires explicit Save button.
+- Z-order switching does not maintain a linked list; `Alt+W` sends current eligible window to bottom and focuses the top eligible window.
 - `_titleBarHiddenWindows` HashSet in AppHost tracks windows with hidden title bars; restored on app exit.
 - App launcher polls `Process.MainWindowHandle` every 200ms (up to 5s) before moving window to target desktop.
 

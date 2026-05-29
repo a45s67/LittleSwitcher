@@ -4,54 +4,12 @@ namespace LittleSwitcher;
 
 public partial class AppHost : Form
 {
-    private FocusHistory _focusHistory;
+    private ZOrderWindowSwitcher _windowSwitcher;
     private GlobalHotkey _globalHotkey;
     private HotkeyConfig _hotkeyConfig;
+    private WindowFilterConfig _windowFilterConfig;
     private HashSet<IntPtr> _titleBarHiddenWindows = new();
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
-        WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
-
-    private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
-        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
-
-    private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
-    private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
-
-    private IntPtr _locationHook;
-    private WinEventDelegate? _locationDelegate;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr WindowFromPoint(POINT point);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
-
-    private const uint GA_ROOT = 2;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT { public int X; public int Y; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MSLLHOOKSTRUCT { public POINT pt; public uint mouseData; public uint flags; public uint time; public IntPtr dwExtraInfo; }
-
-    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private int _lastDesktop = -1;
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -59,16 +17,10 @@ public partial class AppHost : Form
     [DllImport("user32.dll")]
     private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
-    private const int WH_MOUSE_LL = 14;
-    private const int WM_LBUTTONDOWN = 0x0201;
     private const int VK_MENU = 0x12;
     private const uint MAPVK_VK_TO_VSC = 0;
     private const uint WM_KEYUP = 0x0101;
     private const uint WM_SYSKEYUP = 0x0105;
-    private const uint WM_APP_TOGGLE_MANAGEMENT = 0x8001; // WM_APP + 1
-
-    private IntPtr _mouseHook;
-    private LowLevelMouseProc? _mouseProc;
 
     private int ConfiguredModifierVirtualKey => _hotkeyConfig.Modifier switch
     {
@@ -87,13 +39,12 @@ public partial class AppHost : Form
         this.ShowInTaskbar = false;
         this.Visible = false;
 
-        _focusHistory = new FocusHistory();
         _globalHotkey = new GlobalHotkey(this.Handle);
         _hotkeyConfig = HotkeyConfig.Load();
+        _windowFilterConfig = WindowFilterConfig.Load();
+        _windowSwitcher = new ZOrderWindowSwitcher(this.Handle, _windowFilterConfig);
 
         SetupHotkeys();
-        SetupMouseHook();
-        SetupLocationTracking();
         SetupTrayIcon();
 
         BeginInvoke(() => ShowMainWindow());
@@ -118,14 +69,14 @@ public partial class AppHost : Form
 
         _globalHotkey.RegisterHotkey(mod, cfg.CycleWindowsKey, () =>
         {
-            var nextWindow = _focusHistory.GetNextInCurrentContext();
+            var nextWindow = _windowSwitcher.CycleCurrentWindowToBottom();
             if (nextWindow.HasValue && nextWindow.Value != IntPtr.Zero)
                 FocusWindowWithOverlay(nextWindow.Value);
         });
 
         _globalHotkey.RegisterHotkey(mod, cfg.FocusOtherMonitorKey, () =>
         {
-            var window = _focusHistory.GetLastFocusedOnDifferentMonitor();
+            var window = _windowSwitcher.GetTopWindowOnDifferentMonitor();
             if (window.HasValue && window.Value != IntPtr.Zero)
                 FocusWindowWithOverlay(window.Value);
         });
@@ -134,12 +85,33 @@ public partial class AppHost : Form
         {
             ReleaseModifierForForegroundApp();
 
-            var lastDesktop = _focusHistory.GetLastFocusedDesktop();
-            _focusHistory.SetLastFocusedDesktop(VirtualDesktopInterop.GetCurrentDesktopNumber());
+            var lastDesktop = _lastDesktop;
+            if (lastDesktop < 0)
+                return;
+
+            _lastDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
             VirtualDesktopInterop.GoToDesktopNumber(lastDesktop);
-            var window = _focusHistory.GetLastFocusedWindowOnDesktop(lastDesktop);
-            if (window.HasValue && window.Value != IntPtr.Zero)
-                FocusWindowWithOverlay(window.Value);
+            FocusTopWindowAfterDesktopSwitch();
+        });
+
+        _globalHotkey.RegisterHotkey(mod, cfg.PreviousDesktopKey, () =>
+        {
+            var count = VirtualDesktopInterop.GetDesktopCount();
+            if (count <= 0)
+                return;
+
+            var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
+            SwitchToDesktop((currentDesktop - 1 + count) % count);
+        });
+
+        _globalHotkey.RegisterHotkey(mod, cfg.NextDesktopKey, () =>
+        {
+            var count = VirtualDesktopInterop.GetDesktopCount();
+            if (count <= 0)
+                return;
+
+            var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
+            SwitchToDesktop((currentDesktop + 1) % count);
         });
 
         _globalHotkey.RegisterHotkey(mod, cfg.PinWindowKey, () =>
@@ -183,16 +155,39 @@ public partial class AppHost : Form
 
             _globalHotkey.RegisterHotkey(mod, virtualKey, () =>
             {
-                ReleaseModifierForForegroundApp();
-
-                var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
-                _focusHistory.SetLastFocusedDesktop(currentDesktop);
-                VirtualDesktopInterop.GoToDesktopNumber(capturedDesktopNumber);
-                var window = _focusHistory.GetLastFocusedWindowOnDesktop(capturedDesktopNumber);
-                if (window.HasValue && window.Value != IntPtr.Zero)
-                    FocusWindowWithOverlay(window.Value);
+                SwitchToDesktop(capturedDesktopNumber);
             });
         }
+    }
+
+    private void SwitchToDesktop(int desktopNumber)
+    {
+        ReleaseModifierForForegroundApp();
+
+        var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
+        _lastDesktop = currentDesktop;
+        VirtualDesktopInterop.GoToDesktopNumber(desktopNumber);
+        FocusTopWindowAfterDesktopSwitch();
+    }
+
+    private void FocusTopWindowAfterDesktopSwitch()
+    {
+        var attempts = 0;
+        var timer = new System.Windows.Forms.Timer { Interval = 80 };
+        timer.Tick += (_, _) =>
+        {
+            attempts++;
+            var window = _windowSwitcher.GetTopWindowInCurrentContext();
+            if ((window.HasValue && window.Value != IntPtr.Zero) || attempts >= 10)
+            {
+                timer.Stop();
+                timer.Dispose();
+
+                if (window.HasValue && window.Value != IntPtr.Zero)
+                    FocusWindowWithOverlay(window.Value);
+            }
+        };
+        timer.Start();
     }
 
     private void ReleaseModifierForForegroundApp()
@@ -212,62 +207,11 @@ public partial class AppHost : Form
         PostMessage(hwnd, message, (IntPtr)modifierKey, (IntPtr)lParam);
     }
 
-    private void SetupMouseHook()
-    {
-        _mouseProc = MouseHookCallback;
-        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, IntPtr.Zero, 0);
-        System.Diagnostics.Debug.WriteLine($"[MouseHook] SetupMouseHook: hook=0x{_mouseHook:X}, lastError={Marshal.GetLastWin32Error()}");
-    }
-
-    private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        if (nCode >= 0 && wParam == (IntPtr)WM_LBUTTONDOWN)
-        {
-            int vkModifier = ConfiguredModifierVirtualKey;
-
-            if ((GetAsyncKeyState(vkModifier) & 0x8000) != 0)
-            {
-                var hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-                var childWindow = WindowFromPoint(hookStruct.pt);
-                var targetWindow = childWindow != IntPtr.Zero ? GetAncestor(childWindow, GA_ROOT) : IntPtr.Zero;
-
-                if (targetWindow != IntPtr.Zero && targetWindow != this.Handle)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MouseHook] Alt+Click at ({hookStruct.pt.X},{hookStruct.pt.Y}), target=0x{targetWindow:X}. Posting message.");
-                    PostMessage(this.Handle, WM_APP_TOGGLE_MANAGEMENT, targetWindow, IntPtr.Zero);
-                    return (IntPtr)1; // Suppress the click
-                }
-            }
-        }
-        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
-    }
-
-    private void SetupLocationTracking()
-    {
-        _locationDelegate = new WinEventDelegate(LocationChangedHandler);
-        _locationHook = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE,
-            IntPtr.Zero, _locationDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
-    }
-
-    private void LocationChangedHandler(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
-        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
-    {
-        if (eventType == EVENT_OBJECT_LOCATIONCHANGE && hwnd != IntPtr.Zero && hwnd != this.Handle)
-            _focusHistory.HandleWindowLocationChange(hwnd);
-    }
-
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == GlobalHotkey.WM_HOTKEY)
         {
             _globalHotkey.HandleHotkeyMessage(m.WParam.ToInt32());
-        }
-        else if (m.Msg == (int)WM_APP_TOGGLE_MANAGEMENT)
-        {
-            var hwnd = m.WParam;
-            var title = WindowHelper.GetWindowTitle(hwnd);
-            System.Diagnostics.Debug.WriteLine($"[WndProc] ToggleManagement for 0x{hwnd:X} [{title}]");
-            _focusHistory.ToggleWindowManagement(hwnd);
         }
         else
         {
@@ -288,7 +232,7 @@ public partial class AppHost : Form
 
     private void ShowMainWindow()
     {
-        var form = new MainWindow(_hotkeyConfig, _focusHistory, config =>
+        var form = new MainWindow(_hotkeyConfig, _windowSwitcher, config =>
         {
             _hotkeyConfig = config;
             SetupHotkeys();
@@ -315,9 +259,6 @@ public partial class AppHost : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_mouseHook != IntPtr.Zero)
-            UnhookWindowsHookEx(_mouseHook);
-
         foreach (var hwnd in _titleBarHiddenWindows)
             WindowHelper.SetTitleBarVisible(hwnd, true);
         _titleBarHiddenWindows.Clear();

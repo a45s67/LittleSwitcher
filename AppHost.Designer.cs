@@ -10,11 +10,6 @@ partial class AppHost
         {
             _globalHotkey?.UnregisterAll();
 
-            if (_locationHook != IntPtr.Zero)
-            {
-                UnhookWinEvent(_locationHook);
-            }
-
             if (notifyIcon != null)
             {
                 notifyIcon.Visible = false;

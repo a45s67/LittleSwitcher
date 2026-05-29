@@ -76,6 +76,8 @@ public class HotkeyConfig
     public uint Modifier { get; set; } = GlobalHotkey.MOD_ALT;
     public uint CycleWindowsKey { get; set; } = GlobalHotkey.VK_W;
     public uint FocusOtherMonitorKey { get; set; } = GlobalHotkey.VK_OEM_6;
+    public uint PreviousDesktopKey { get; set; } = GlobalHotkey.VK_OEM_4;
+    public uint NextDesktopKey { get; set; } = GlobalHotkey.VK_OEM_2;
     public uint LastDesktopKey { get; set; } = GlobalHotkey.VK_OEM_5;
     public uint PinWindowKey { get; set; } = GlobalHotkey.VK_P;
     public uint ToggleTaskbarKey { get; set; } = GlobalHotkey.VK_T;
