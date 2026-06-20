@@ -12,15 +12,36 @@ public partial class AppHost : Form
     private int _lastDesktop = -1;
 
     [DllImport("user32.dll")]
-    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
     [DllImport("user32.dll")]
-    private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+    private static extern short GetAsyncKeyState(int vKey);
 
-    private const int VK_MENU = 0x12;
-    private const uint MAPVK_VK_TO_VSC = 0;
-    private const uint WM_KEYUP = 0x0101;
-    private const uint WM_SYSKEYUP = 0x0105;
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT
+    {
+        public uint type;
+        public InputUnion u;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)] public KEYBDINPUT ki;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    private const uint INPUT_KEYBOARD = 1;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
 
     private int ConfiguredModifierVirtualKey => _hotkeyConfig.Modifier switch
     {
@@ -50,8 +71,25 @@ public partial class AppHost : Form
         BeginInvoke(() => ShowMainWindow());
     }
 
+    private void InjectModifierKeyUp()
+    {
+        if ((GetAsyncKeyState(ConfiguredModifierVirtualKey) & 0x8000) == 0)
+            return;
+
+        var input = new INPUT
+        {
+            type = INPUT_KEYBOARD,
+            u = new InputUnion
+            {
+                ki = new KEYBDINPUT { wVk = (ushort)ConfiguredModifierVirtualKey, dwFlags = KEYEVENTF_KEYUP }
+            }
+        };
+        SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
+    }
+
     private void FocusWindowWithOverlay(IntPtr hwnd)
     {
+        InjectModifierKeyUp();
         WindowHelper.FocusWindow(hwnd);
         if (_titleBarHiddenWindows.Contains(hwnd))
         {
@@ -83,7 +121,7 @@ public partial class AppHost : Form
 
         _globalHotkey.RegisterHotkey(mod, cfg.LastDesktopKey, () =>
         {
-            ReleaseModifierForForegroundApp();
+            InjectModifierKeyUp();
 
             var lastDesktop = _lastDesktop;
             if (lastDesktop < 0)
@@ -162,7 +200,7 @@ public partial class AppHost : Form
 
     private void SwitchToDesktop(int desktopNumber)
     {
-        ReleaseModifierForForegroundApp();
+        InjectModifierKeyUp();
 
         var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
         _lastDesktop = currentDesktop;
@@ -188,23 +226,6 @@ public partial class AppHost : Form
             }
         };
         timer.Start();
-    }
-
-    private void ReleaseModifierForForegroundApp()
-    {
-        var hwnd = WindowHelper.GetForegroundWindow();
-        if (hwnd == IntPtr.Zero || hwnd == this.Handle)
-            return;
-
-        var modifierKey = ConfiguredModifierVirtualKey;
-        var scanCode = MapVirtualKey((uint)modifierKey, MAPVK_VK_TO_VSC);
-        var message = modifierKey == VK_MENU ? WM_SYSKEYUP : WM_KEYUP;
-        var lParam = 1 | ((int)scanCode << 16) | (1 << 30) | unchecked((int)0x80000000);
-
-        if (modifierKey == VK_MENU)
-            lParam |= 1 << 29;
-
-        PostMessage(hwnd, message, (IntPtr)modifierKey, (IntPtr)lParam);
     }
 
     protected override void WndProc(ref Message m)
