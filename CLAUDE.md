@@ -36,6 +36,14 @@ The exe may be locked if the app is running — close from tray icon first.
 - `_titleBarHiddenWindows` HashSet in AppHost tracks windows with hidden title bars; restored on app exit.
 - App launcher polls `Process.MainWindowHandle` every 200ms (up to 5s) before moving window to target desktop.
 
+## Hotkey Mechanism Notes
+
+`RegisterHotKey` intercepts the key combination but not individual modifier key events: the foreground window still receives `WM_SYSKEYDOWN(VK_MENU)` when Alt is first pressed, and `WM_SYSKEYUP(VK_MENU)` when Alt is physically released. Only the combo's keydown is suppressed; keyup events are never intercepted.
+
+This causes menu activation on the newly focused window when switching with an Alt modifier: the new window receives a hardware-repeat Alt keydown after focus transfer, and if Alt is released before any other key, DefWindowProc fires SC_KEYMENU. The current fix (`InjectModifierKeyUp` via `SendInput` in `FocusWindowWithOverlay`) clears the global Alt async key state before `SetForegroundWindow`, which handles the focus-transfer moment but not hardware repeats from prolonged key holds.
+
+**Alternative: `WH_KEYBOARD_LL`** — `SetWindowsHookEx(WH_KEYBOARD_LL, ...)` intercepts every key event before any window sees it, and can fully suppress both keydown and keyup for the modifier. This eliminates the Alt menu issue at the root (used by AutoHotkey). Does not require a separate DLL. Hook proc must return within ~300ms. Same UAC/elevated-window limitation as `RegisterHotKey`.
+
 ## Conventions
 
 - WinForms absolute positioning (not TableLayoutPanel — it caused layout issues).
