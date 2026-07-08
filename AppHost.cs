@@ -17,6 +17,9 @@ public partial class AppHost : Form
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
+    [DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
     {
@@ -42,15 +45,26 @@ public partial class AppHost : Form
 
     private const uint INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+    private const uint MAPVK_VK_TO_VSC = 0;
+    private const ushort VK_LCONTROL = 0xA2;
 
-    private int ConfiguredModifierVirtualKey => _hotkeyConfig.Modifier switch
+    // Left/right-specific VKs: injecting a keyup clears the async state of the
+    // key we send, so detection must use the side-specific keys the hardware
+    // actually reports — the generic VK reads "up" after our own injection
+    // even while the key is still physically held.
+    private ushort[] ConfiguredModifierSideKeys => _hotkeyConfig.Modifier switch
     {
-        GlobalHotkey.MOD_ALT => 0x12,      // VK_MENU
-        GlobalHotkey.MOD_CONTROL => 0x11,  // VK_CONTROL
-        GlobalHotkey.MOD_SHIFT => 0x10,    // VK_SHIFT
-        GlobalHotkey.MOD_WIN => 0x5B,      // VK_LWIN
-        _ => 0x12
+        GlobalHotkey.MOD_ALT => [0xA4, 0xA5],     // VK_LMENU, VK_RMENU
+        GlobalHotkey.MOD_CONTROL => [0xA2, 0xA3], // VK_LCONTROL, VK_RCONTROL
+        GlobalHotkey.MOD_SHIFT => [0xA0, 0xA1],   // VK_LSHIFT, VK_RSHIFT
+        GlobalHotkey.MOD_WIN => [0x5B, 0x5C],     // VK_LWIN, VK_RWIN
+        _ => [0xA4, 0xA5]
     };
+
+    // Side keys physically held at the last hotkey fire; consumed by
+    // ReassertModifierReleaseAfterFocus once focus lands on the new window.
+    private ushort[] _heldModifierKeys = [];
 
     public AppHost()
     {
@@ -73,24 +87,77 @@ public partial class AppHost : Form
 
     private void InjectModifierKeyUp()
     {
-        if ((GetAsyncKeyState(ConfiguredModifierVirtualKey) & 0x8000) == 0)
+        var held = ConfiguredModifierSideKeys
+            .Where(vk => (GetAsyncKeyState(vk) & 0x8000) != 0)
+            .ToArray();
+        _heldModifierKeys = _heldModifierKeys.Union(held).ToArray();
+
+        if (held.Length > 0)
+            SendMaskedKeyUp(held);
+    }
+
+    // The physical modifier keyup is delivered to whichever window is
+    // foreground when the user lets go — after a desktop switch that is the
+    // newly focused window, which never saw the keydown. A bare modifier keyup
+    // reads as an Alt/Win tap (menu activation) there, and an RDP client that
+    // synced "modifier down" into its session on focus gain never receives the
+    // release. Re-sending the masked release after focus covers both.
+    private void ReassertModifierReleaseAfterFocus()
+    {
+        if (_heldModifierKeys.Length == 0)
             return;
 
-        var input = new INPUT
+        SendMaskedKeyUp(_heldModifierKeys);
+        _heldModifierKeys = [];
+    }
+
+    private void SendMaskedKeyUp(ushort[] keys)
+    {
+        var inputs = new List<INPUT>();
+
+        // A lone Alt (or Win) keyup makes DefWindowProc fire SC_KEYMENU (or open
+        // the Start menu) on whichever window saw the keydown. Mask it with a
+        // Ctrl tap in between so the keyup is no longer "unaccompanied" —
+        // same trick AutoHotkey uses.
+        if (_hotkeyConfig.Modifier is GlobalHotkey.MOD_ALT or GlobalHotkey.MOD_WIN)
+        {
+            inputs.Add(MakeKeyInput(VK_LCONTROL, 0));
+            inputs.Add(MakeKeyInput(VK_LCONTROL, KEYEVENTF_KEYUP));
+        }
+
+        foreach (var vk in keys)
+            inputs.Add(MakeKeyInput(vk, KEYEVENTF_KEYUP));
+
+        SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+    }
+
+    private static INPUT MakeKeyInput(ushort vk, uint flags)
+    {
+        if (vk is 0xA5 or 0xA3 or 0x5B or 0x5C) // VK_RMENU, VK_RCONTROL, VK_LWIN, VK_RWIN
+            flags |= KEYEVENTF_EXTENDEDKEY;
+
+        return new INPUT
         {
             type = INPUT_KEYBOARD,
             u = new InputUnion
             {
-                ki = new KEYBDINPUT { wVk = (ushort)ConfiguredModifierVirtualKey, dwFlags = KEYEVENTF_KEYUP }
+                ki = new KEYBDINPUT
+                {
+                    // RDP clients forward keys by scan code; wScan = 0 events
+                    // never reach the remote session.
+                    wVk = vk,
+                    wScan = (ushort)MapVirtualKey(vk, MAPVK_VK_TO_VSC),
+                    dwFlags = flags
+                }
             }
         };
-        SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
     }
 
     private void FocusWindowWithOverlay(IntPtr hwnd)
     {
         InjectModifierKeyUp();
         WindowHelper.FocusWindow(hwnd);
+        ReassertModifierReleaseAfterFocus();
         if (_titleBarHiddenWindows.Contains(hwnd))
         {
             var title = WindowHelper.GetWindowTitle(hwnd);
@@ -210,6 +277,17 @@ public partial class AppHost : Form
 
     private void FocusTopWindowAfterDesktopSwitch()
     {
+        // Windows on the target desktop are usually still cloaked at this
+        // point (GoToDesktopNumber is async), but when they aren't, focusing
+        // immediately shortens the gap in which the user's physical modifier
+        // keyup can land on a transient window.
+        var immediate = _windowSwitcher.GetTopWindowInCurrentContext();
+        if (immediate.HasValue && immediate.Value != IntPtr.Zero)
+        {
+            FocusWindowWithOverlay(immediate.Value);
+            return;
+        }
+
         var attempts = 0;
         var timer = new System.Windows.Forms.Timer { Interval = 80 };
         timer.Tick += (_, _) =>
