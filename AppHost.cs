@@ -8,6 +8,7 @@ public partial class AppHost : Form
     private GlobalHotkey _globalHotkey;
     private HotkeyConfig _hotkeyConfig;
     private WindowFilterConfig _windowFilterConfig;
+    private ModifierReleaseGuard _releaseGuard;
     private HashSet<IntPtr> _titleBarHiddenWindows = new();
     private int _lastDesktop = -1;
 
@@ -76,6 +77,7 @@ public partial class AppHost : Form
 
         _globalHotkey = new GlobalHotkey(this.Handle);
         _hotkeyConfig = HotkeyConfig.Load();
+        _releaseGuard = new ModifierReleaseGuard(vk => SendMaskedKeyUp([vk]));
         _windowFilterConfig = WindowFilterConfig.Load();
         _windowSwitcher = new ZOrderWindowSwitcher(this.Handle, _windowFilterConfig);
 
@@ -93,7 +95,14 @@ public partial class AppHost : Form
         _heldModifierKeys = _heldModifierKeys.Union(held).ToArray();
 
         if (held.Length > 0)
+        {
+            // From here until the physical release, the guard eats the
+            // modifier's hardware events and substitutes a masked keyup at
+            // release time — injection alone loses the race when the user
+            // lets go the instant the desktop switches.
+            _releaseGuard.Arm(held);
             SendMaskedKeyUp(held);
+        }
     }
 
     // The physical modifier keyup is delivered to whichever window is
@@ -363,6 +372,7 @@ public partial class AppHost : Form
         _titleBarHiddenWindows.Clear();
 
         WindowHelper.ShowTaskbar();
+        _releaseGuard.Dispose();
         notifyIcon.Visible = false;
         base.OnFormClosing(e);
     }
