@@ -11,6 +11,16 @@ public partial class AppHost : Form
     private HashSet<IntPtr> _titleBarHiddenWindows = new();
     private int _lastDesktop = -1;
 
+    // Combo mode: after ReleaseModifierBeforeSwitch clears the async modifier
+    // state, RegisterHotKey no longer matches modifier+key while the user
+    // keeps holding the modifier. While it is physically held we register the
+    // trigger keys as bare hotkeys (same actions), and drop them the moment
+    // the watcher sees the physical release.
+    private ModifierReleaseWatcher _releaseWatcher = null!;
+    private readonly Dictionary<uint, Action> _hotkeyBindings = new();
+    private readonly List<int> _comboHotkeyIds = new();
+    private System.Windows.Forms.Timer? _comboTimeout;
+
     [DllImport("user32.dll")]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
@@ -30,7 +40,23 @@ public partial class AppHost : Form
     [StructLayout(LayoutKind.Explicit)]
     private struct InputUnion
     {
+        // MOUSEINPUT must be present even though only ki is used: it is the
+        // union's largest member, and without it Marshal.SizeOf<INPUT>() is 32
+        // instead of 40 on x64 — SendInput validates cbSize and silently
+        // rejects the whole batch.
+        [FieldOffset(0)] public MOUSEINPUT mi;
         [FieldOffset(0)] public KEYBDINPUT ki;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -49,10 +75,8 @@ public partial class AppHost : Form
     private const uint MAPVK_VK_TO_VSC = 0;
     private const ushort VK_LCONTROL = 0xA2;
 
-    // Left/right-specific VKs: injecting a keyup clears the async state of the
-    // key we send, so detection must use the side-specific keys the hardware
-    // actually reports — the generic VK reads "up" after our own injection
-    // even while the key is still physically held.
+    // Left/right-specific VKs — the hardware reports these (e.g. RMENU for
+    // right Alt), so physical-hold detection must check both sides.
     private ushort[] ConfiguredModifierSideKeys => _hotkeyConfig.Modifier switch
     {
         GlobalHotkey.MOD_ALT => [0xA4, 0xA5],     // VK_LMENU, VK_RMENU
@@ -61,10 +85,6 @@ public partial class AppHost : Form
         GlobalHotkey.MOD_WIN => [0x5B, 0x5C],     // VK_LWIN, VK_RWIN
         _ => [0xA4, 0xA5]
     };
-
-    // Side keys physically held at the last hotkey fire; consumed by
-    // ReassertModifierReleaseAfterFocus once focus lands on the new window.
-    private ushort[] _heldModifierKeys = [];
 
     public AppHost()
     {
@@ -76,6 +96,7 @@ public partial class AppHost : Form
 
         _globalHotkey = new GlobalHotkey(this.Handle);
         _hotkeyConfig = HotkeyConfig.Load();
+        _releaseWatcher = new ModifierReleaseWatcher(_ => BeginInvoke(ExitComboMode));
         _windowFilterConfig = WindowFilterConfig.Load();
         _windowSwitcher = new ZOrderWindowSwitcher(this.Handle, _windowFilterConfig);
 
@@ -85,50 +106,85 @@ public partial class AppHost : Form
         BeginInvoke(() => ShowMainWindow());
     }
 
-    private void InjectModifierKeyUp()
+    // A window activated while the modifier is physically held has its thread
+    // key state synced from the async table as "modifier down"; the user's
+    // physical keyup then completes a clean Alt tap and arms menu/mnemonic
+    // mode (RDCMan measured: stuck when released +14ms after activation, safe
+    // at +75ms). Intervening dummy events do not help — the arming comes from
+    // state sync, not the message sequence — so the async state must read
+    // "up" BEFORE the foreground changes: inject the release synchronously in
+    // the hotkey handler. The Ctrl tap masks the injected keyup for the old
+    // window, which saw the real Alt keydown and would otherwise fire
+    // SC_KEYMENU on an unaccompanied down→up pair (AutoHotkey's mask trick).
+    private void ReleaseModifierBeforeSwitch()
     {
         var held = ConfiguredModifierSideKeys
             .Where(vk => (GetAsyncKeyState(vk) & 0x8000) != 0)
             .ToArray();
-        _heldModifierKeys = _heldModifierKeys.Union(held).ToArray();
-
-        if (held.Length > 0)
-            SendMaskedKeyUp(held);
-    }
-
-    // The physical modifier keyup is delivered to whichever window is
-    // foreground when the user lets go — after a desktop switch that is the
-    // newly focused window, which never saw the keydown. A bare modifier keyup
-    // reads as an Alt/Win tap (menu activation) there, and an RDP client that
-    // synced "modifier down" into its session on focus gain never receives the
-    // release. Re-sending the masked release after focus covers both.
-    private void ReassertModifierReleaseAfterFocus()
-    {
-        if (_heldModifierKeys.Length == 0)
+        if (held.Length == 0)
+        {
+            // A combo fire (bare hotkey while the modifier is still physically
+            // held): the release was already injected, just extend the window.
+            if (_comboHotkeyIds.Count > 0)
+                RestartComboTimeout();
             return;
+        }
 
-        SendMaskedKeyUp(_heldModifierKeys);
-        _heldModifierKeys = [];
-    }
-
-    private void SendMaskedKeyUp(ushort[] keys)
-    {
         var inputs = new List<INPUT>();
 
-        // A lone Alt (or Win) keyup makes DefWindowProc fire SC_KEYMENU (or open
-        // the Start menu) on whichever window saw the keydown. Mask it with a
-        // Ctrl tap in between so the keyup is no longer "unaccompanied" —
-        // same trick AutoHotkey uses.
         if (_hotkeyConfig.Modifier is GlobalHotkey.MOD_ALT or GlobalHotkey.MOD_WIN)
         {
             inputs.Add(MakeKeyInput(VK_LCONTROL, 0));
             inputs.Add(MakeKeyInput(VK_LCONTROL, KEYEVENTF_KEYUP));
         }
 
-        foreach (var vk in keys)
+        foreach (var vk in held)
             inputs.Add(MakeKeyInput(vk, KEYEVENTF_KEYUP));
 
         SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+
+        EnterComboMode();
+    }
+
+    private void EnterComboMode()
+    {
+        if (_comboHotkeyIds.Count == 0)
+        {
+            foreach (var (key, action) in _hotkeyBindings)
+            {
+                var id = _globalHotkey.RegisterHotkey(0, key, action);
+                if (id >= 0)
+                    _comboHotkeyIds.Add(id);
+            }
+
+            _releaseWatcher.Watch(ConfiguredModifierSideKeys);
+        }
+
+        RestartComboTimeout();
+    }
+
+    // Safety valve: if the physical release is never seen (e.g. it happened on
+    // the UAC secure desktop where LL hooks don't run), don't leave bare
+    // hotkeys registered forever.
+    private void RestartComboTimeout()
+    {
+        if (_comboTimeout == null)
+        {
+            _comboTimeout = new System.Windows.Forms.Timer { Interval = 10000 };
+            _comboTimeout.Tick += (_, _) => ExitComboMode();
+        }
+
+        _comboTimeout.Stop();
+        _comboTimeout.Start();
+    }
+
+    private void ExitComboMode()
+    {
+        foreach (var id in _comboHotkeyIds)
+            _globalHotkey.UnregisterHotkey(id);
+        _comboHotkeyIds.Clear();
+        _releaseWatcher.Unwatch();
+        _comboTimeout?.Stop();
     }
 
     private static INPUT MakeKeyInput(ushort vk, uint flags)
@@ -143,8 +199,8 @@ public partial class AppHost : Form
             {
                 ki = new KEYBDINPUT
                 {
-                    // RDP clients forward keys by scan code; wScan = 0 events
-                    // never reach the remote session.
+                    // Real scan codes so RDP clients (which forward by scan
+                    // code) see the events too.
                     wVk = vk,
                     wScan = (ushort)MapVirtualKey(vk, MAPVK_VK_TO_VSC),
                     dwFlags = flags
@@ -155,9 +211,8 @@ public partial class AppHost : Form
 
     private void FocusWindowWithOverlay(IntPtr hwnd)
     {
-        InjectModifierKeyUp();
+        ReleaseModifierBeforeSwitch();
         WindowHelper.FocusWindow(hwnd);
-        ReassertModifierReleaseAfterFocus();
         if (_titleBarHiddenWindows.Contains(hwnd))
         {
             var title = WindowHelper.GetWindowTitle(hwnd);
@@ -165,30 +220,40 @@ public partial class AppHost : Form
         }
     }
 
+    // Registers modifier+key and records key→action so EnterComboMode can
+    // re-register the same actions as bare hotkeys.
+    private void RegisterBoundHotkey(uint mod, uint key, Action action)
+    {
+        _globalHotkey.RegisterHotkey(mod, key, action);
+        _hotkeyBindings[key] = action;
+    }
+
     private void SetupHotkeys()
     {
+        ExitComboMode();
         _globalHotkey.UnregisterAll();
+        _hotkeyBindings.Clear();
 
         var cfg = _hotkeyConfig;
         var mod = cfg.Modifier;
 
-        _globalHotkey.RegisterHotkey(mod, cfg.CycleWindowsKey, () =>
+        RegisterBoundHotkey(mod, cfg.CycleWindowsKey, () =>
         {
             var nextWindow = _windowSwitcher.CycleCurrentWindowToBottom();
             if (nextWindow.HasValue && nextWindow.Value != IntPtr.Zero)
                 FocusWindowWithOverlay(nextWindow.Value);
         });
 
-        _globalHotkey.RegisterHotkey(mod, cfg.FocusOtherMonitorKey, () =>
+        RegisterBoundHotkey(mod, cfg.FocusOtherMonitorKey, () =>
         {
             var window = _windowSwitcher.GetTopWindowOnDifferentMonitor();
             if (window.HasValue && window.Value != IntPtr.Zero)
                 FocusWindowWithOverlay(window.Value);
         });
 
-        _globalHotkey.RegisterHotkey(mod, cfg.LastDesktopKey, () =>
+        RegisterBoundHotkey(mod, cfg.LastDesktopKey, () =>
         {
-            InjectModifierKeyUp();
+            ReleaseModifierBeforeSwitch();
 
             var lastDesktop = _lastDesktop;
             if (lastDesktop < 0)
@@ -199,7 +264,7 @@ public partial class AppHost : Form
             FocusTopWindowAfterDesktopSwitch();
         });
 
-        _globalHotkey.RegisterHotkey(mod, cfg.PreviousDesktopKey, () =>
+        RegisterBoundHotkey(mod, cfg.PreviousDesktopKey, () =>
         {
             var count = VirtualDesktopInterop.GetDesktopCount();
             if (count <= 0)
@@ -209,7 +274,7 @@ public partial class AppHost : Form
             SwitchToDesktop((currentDesktop - 1 + count) % count);
         });
 
-        _globalHotkey.RegisterHotkey(mod, cfg.NextDesktopKey, () =>
+        RegisterBoundHotkey(mod, cfg.NextDesktopKey, () =>
         {
             var count = VirtualDesktopInterop.GetDesktopCount();
             if (count <= 0)
@@ -219,7 +284,7 @@ public partial class AppHost : Form
             SwitchToDesktop((currentDesktop + 1) % count);
         });
 
-        _globalHotkey.RegisterHotkey(mod, cfg.PinWindowKey, () =>
+        RegisterBoundHotkey(mod, cfg.PinWindowKey, () =>
         {
             var hwnd = WindowHelper.GetForegroundWindow();
             if (hwnd != IntPtr.Zero && hwnd != this.Handle)
@@ -231,9 +296,9 @@ public partial class AppHost : Form
             }
         });
 
-        _globalHotkey.RegisterHotkey(mod, cfg.ToggleTaskbarKey, () => WindowHelper.ToggleTaskbar());
+        RegisterBoundHotkey(mod, cfg.ToggleTaskbarKey, () => WindowHelper.ToggleTaskbar());
 
-        _globalHotkey.RegisterHotkey(mod, cfg.ToggleTitleBarKey, () =>
+        RegisterBoundHotkey(mod, cfg.ToggleTitleBarKey, () =>
         {
             var hwnd = WindowHelper.GetForegroundWindow();
             if (hwnd != IntPtr.Zero && hwnd != this.Handle)
@@ -258,7 +323,7 @@ public partial class AppHost : Form
             var capturedDesktopNumber = (int)(i - 1);
             var virtualKey = GlobalHotkey.VK_1 + (i - 1);
 
-            _globalHotkey.RegisterHotkey(mod, virtualKey, () =>
+            RegisterBoundHotkey(mod, virtualKey, () =>
             {
                 SwitchToDesktop(capturedDesktopNumber);
             });
@@ -267,7 +332,7 @@ public partial class AppHost : Form
 
     private void SwitchToDesktop(int desktopNumber)
     {
-        InjectModifierKeyUp();
+        ReleaseModifierBeforeSwitch();
 
         var currentDesktop = VirtualDesktopInterop.GetCurrentDesktopNumber();
         _lastDesktop = currentDesktop;
@@ -363,6 +428,7 @@ public partial class AppHost : Form
         _titleBarHiddenWindows.Clear();
 
         WindowHelper.ShowTaskbar();
+        _releaseWatcher.Dispose();
         notifyIcon.Visible = false;
         base.OnFormClosing(e);
     }
