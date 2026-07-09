@@ -48,7 +48,7 @@ The *newly focused* window has the mirror problem: it never saw the Alt keydown 
 
 Injection details that matter: SendInput events must carry real scan codes (`MapVirtualKey`) — RDP clients forward keys by scan code and drop `wScan = 0` events — and right-side modifiers plus Win keys need `KEYEVENTF_EXTENDEDKEY`.
 
-**`WH_KEYBOARD_LL` release guard** — injection ordering cannot win the race when the modifier is released the instant the desktop switches: the shell foregrounds the target window within tens of ms and the bare physical keyup lands there before any post-focus re-injection. `ModifierReleaseGuard` (armed at each hotkey fire, in `InjectModifierKeyUp`) eats the modifier's hardware repeats and replaces its physical keyup with the masked scan-coded release, guaranteeing no window ever receives a bare modifier keyup. Replacing (not just eating) keeps the async key state consistent — injected events update it, eaten ones don't. 5s timeout guards against a release missed on the UAC secure desktop (LL hooks don't run there). Hook proc must return within ~300ms; does not require a separate DLL.
+**Alternative: `WH_KEYBOARD_LL`** — `SetWindowsHookEx(WH_KEYBOARD_LL, ...)` intercepts every key event before any window sees it, and can fully suppress both keydown and keyup for the modifier. This eliminates the Alt menu issue at the root (used by AutoHotkey). Does not require a separate DLL. Hook proc must return within ~300ms. Same UAC/elevated-window limitation as `RegisterHotKey`.
 
 ## Conventions
 
