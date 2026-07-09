@@ -16,4 +16,8 @@
     <PackageReference Include="Slions.VirtualDesktop" Version="6.*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="KeyLogTool/**" />
+  </ItemGroup>
+
 </Project>
